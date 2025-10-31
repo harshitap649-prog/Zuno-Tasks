@@ -4,10 +4,12 @@ import { X, Clock, Gift } from 'lucide-react';
 export default function WatchAdModal({ onClose, onComplete }) {
   const [countdown, setCountdown] = useState(3);
   const [watching, setWatching] = useState(false);
+  const [adLoaded, setAdLoaded] = useState(false); // Track if ad is actually visible/loaded
   const [adTimeRemaining, setAdTimeRemaining] = useState(30); // 30 seconds to watch ad
   const [adTriggered, setAdTriggered] = useState(false);
   const adCompletedRef = useRef(false);
   const adWindowRef = useRef(null);
+  const countdownTimerRef = useRef(null);
 
   // Countdown before ad starts
   useEffect(() => {
@@ -17,6 +19,7 @@ export default function WatchAdModal({ onClose, onComplete }) {
     } else {
       setWatching(true);
       setAdTimeRemaining(30);
+      setAdLoaded(false); // Reset ad loaded state
       
       // Trigger ad immediately
       setTimeout(() => {
@@ -25,17 +28,31 @@ export default function WatchAdModal({ onClose, onComplete }) {
     }
   }, [countdown]);
 
-  // Ad watching timer
+  // Ad watching timer - ONLY START when ad is actually loaded/visible
   useEffect(() => {
-    if (!watching || adCompletedRef.current) return;
+    // Only start countdown if ad is loaded and watching
+    if (!watching || !adLoaded || adCompletedRef.current) {
+      // Clear timer if conditions not met
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      return;
+    }
 
-    const timer = setInterval(() => {
+    // Start the countdown timer only when ad is loaded
+    countdownTimerRef.current = setInterval(() => {
       setAdTimeRemaining((prev) => {
         if (prev <= 1) {
           // Ad completed - award points
           if (!adCompletedRef.current) {
             adCompletedRef.current = true;
             setWatching(false);
+            setAdLoaded(false);
+            if (countdownTimerRef.current) {
+              clearInterval(countdownTimerRef.current);
+              countdownTimerRef.current = null;
+            }
             onComplete();
           }
           return 0;
@@ -44,8 +61,13 @@ export default function WatchAdModal({ onClose, onComplete }) {
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [watching, onComplete]);
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+    };
+  }, [watching, adLoaded, onComplete]);
 
   const triggerAd = () => {
     setAdTriggered(true);
@@ -63,9 +85,25 @@ export default function WatchAdModal({ onClose, onComplete }) {
         // Try to trigger the ad
         window.focus();
         
+        let adDetected = false;
+        
+        // Check if ad window opened (popup/interstitial)
+        // Monitor for popup window or document visibility change
+        const checkAdWindow = setInterval(() => {
+          // Check if a new window/tab was opened (ad appeared)
+          // Or if document became hidden (user switched to ad tab/window)
+          if (document.hidden || adWindowRef.current) {
+            adDetected = true;
+            setAdLoaded(true);
+            clearInterval(checkAdWindow);
+          }
+        }, 500);
+        
         // Fallback: If no ad appears after 5 seconds, use iframe ad
         setTimeout(() => {
-          if (!adWindowRef.current || document.hidden === false) {
+          clearInterval(checkAdWindow);
+          if (!adDetected) {
+            // Ad didn't appear via service worker, use fallback
             loadFallbackAd();
           }
         }, 5000);
@@ -91,6 +129,11 @@ export default function WatchAdModal({ onClose, onComplete }) {
       
       if (adWindow) {
         adWindowRef.current = adWindow;
+        
+        // Ad is now visible - mark as loaded and start countdown
+        setTimeout(() => {
+          setAdLoaded(true);
+        }, 500);
         
         // Write ad content (you can replace this with actual ad URL)
         adWindow.document.write(`
@@ -238,68 +281,76 @@ export default function WatchAdModal({ onClose, onComplete }) {
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Watch Ad to Earn Points</h3>
             
-            {/* Timer and Progress Display */}
-            <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 mb-4 border-2 border-purple-300">
-              <div className="flex items-center justify-center mb-4">
-                <Clock className="w-6 h-6 text-purple-600 mr-2" />
-                <span className="text-lg font-semibold text-gray-700">Time Remaining:</span>
-                <span className="text-3xl font-bold text-purple-600 ml-3">{adTimeRemaining}s</span>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="w-full bg-gray-200 rounded-full h-4 mb-4 overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-purple-500 to-blue-500 h-full rounded-full transition-all duration-1000 ease-linear flex items-center justify-end pr-2"
-                  style={{ width: `${(adTimeRemaining / 30) * 100}%` }}
-                >
-                  {adTimeRemaining > 0 && (
-                    <span className="text-xs font-bold text-white">{Math.round((adTimeRemaining / 30) * 100)}%</span>
-                  )}
+            {/* Timer and Progress Display - Only show when ad is loaded */}
+            {adLoaded && (
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 mb-4 border-2 border-purple-300">
+                <div className="flex items-center justify-center mb-4">
+                  <Clock className="w-6 h-6 text-purple-600 mr-2" />
+                  <span className="text-lg font-semibold text-gray-700">Time Remaining:</span>
+                  <span className="text-3xl font-bold text-purple-600 ml-3">{adTimeRemaining}s</span>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="w-full bg-gray-200 rounded-full h-4 mb-4 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-purple-500 to-blue-500 h-full rounded-full transition-all duration-1000 ease-linear flex items-center justify-end pr-2"
+                    style={{ width: `${(adTimeRemaining / 30) * 100}%` }}
+                  >
+                    {adTimeRemaining > 0 && (
+                      <span className="text-xs font-bold text-white">{Math.round((adTimeRemaining / 30) * 100)}%</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Points Info */}
+                <div className="flex items-center justify-center bg-white rounded-lg p-3">
+                  <Gift className="w-5 h-5 text-green-600 mr-2" />
+                  <span className="text-sm font-medium text-gray-700">
+                    You will earn <span className="font-bold text-green-600">20 points</span> when the timer ends!
+                  </span>
                 </div>
               </div>
-
-              {/* Points Info */}
-              <div className="flex items-center justify-center bg-white rounded-lg p-3">
-                <Gift className="w-5 h-5 text-green-600 mr-2" />
-                <span className="text-sm font-medium text-gray-700">
-                  You will earn <span className="font-bold text-green-600">20 points</span> when the timer ends!
-                </span>
-              </div>
-            </div>
+            )}
 
             {/* Ad Container */}
             <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 text-center border-2 border-purple-300 relative" style={{ minHeight: '300px' }}>
               {adTriggered ? (
-                <div className="flex flex-col items-center justify-center h-full">
-                  {adWindowRef.current ? (
-                    <>
-                      <div className="mb-4">
-                        <div className="animate-pulse rounded-full h-16 w-16 border-4 border-purple-600 mx-auto flex items-center justify-center">
-                          <span className="text-2xl">📺</span>
-                        </div>
+                adLoaded ? (
+                  // Ad is loaded and visible
+                  <div className="flex flex-col items-center justify-center h-full">
+                    <div className="mb-4">
+                      <div className="animate-pulse rounded-full h-16 w-16 border-4 border-green-500 mx-auto flex items-center justify-center bg-green-100">
+                        <span className="text-2xl">✅</span>
                       </div>
-                      <p className="text-lg font-semibold text-gray-800 mb-2">📺 Ad is Playing!</p>
-                      <p className="text-sm text-gray-600 mb-2">
-                        The ad has opened in a new window. Please watch it there.
+                    </div>
+                    <p className="text-xl font-semibold text-green-600 mb-2">📺 Ad is Now Playing!</p>
+                    <p className="text-sm text-gray-600 mb-4">
+                      The ad is visible. Please watch it completely. The countdown timer is running above.
+                    </p>
+                    <div className="bg-green-100 rounded-lg p-3 max-w-md mx-auto">
+                      <p className="text-xs text-green-800 font-medium">
+                        ✅ <strong>Ad Loaded Successfully!</strong> Watch the ad and points will be awarded automatically when the timer reaches 0.
                       </p>
-                      <div className="bg-purple-100 rounded-lg p-3 max-w-md mx-auto mt-4">
-                        <p className="text-xs text-gray-700 font-medium">
-                          💡 <strong>Tip:</strong> Keep this window open and watch the ad in the popup window. Points will be awarded automatically when the timer reaches 0.
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="mb-6">
-                        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mx-auto"></div>
-                      </div>
-                      <p className="text-xl font-semibold text-gray-800 mb-2">📺 Loading Ad...</p>
-                      <p className="text-sm text-gray-600 mb-4">
-                        Please wait while we prepare the ad for you
+                    </div>
+                  </div>
+                ) : (
+                  // Ad is loading/not visible yet
+                  <div className="flex flex-col items-center justify-center h-full">
+                    <div className="mb-6">
+                      <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mx-auto"></div>
+                    </div>
+                    <p className="text-xl font-semibold text-gray-800 mb-2">📺 Your Ad Will Load Soon</p>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Please wait while we load the advertisement for you...
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto mt-4">
+                      <p className="text-sm text-blue-800 font-medium mb-1">⏳ Loading Advertisement</p>
+                      <p className="text-xs text-blue-600">
+                        The ad may open in a new window or tab. Please don't close this page. The 30-second countdown will start automatically once the ad is visible.
                       </p>
-                    </>
-                  )}
-                </div>
+                    </div>
+                  </div>
+                )
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-lg text-gray-600">Preparing ad...</p>
@@ -308,12 +359,20 @@ export default function WatchAdModal({ onClose, onComplete }) {
             </div>
 
             {/* Instructions */}
-            <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-xs text-yellow-800 text-center">
-                ⏱️ <strong>Important:</strong> The ad will automatically award 20 points when the timer reaches 0. 
-                {adTimeRemaining > 0 && ` Please keep this window open for ${adTimeRemaining} more seconds.`}
-              </p>
-            </div>
+            {adLoaded ? (
+              <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-xs text-green-800 text-center">
+                  ⏱️ <strong>Ad is Playing:</strong> The 30-second countdown has started! Watch the ad completely. You will earn <strong>20 points</strong> when the timer reaches 0. 
+                  {adTimeRemaining > 0 && ` Time remaining: ${adTimeRemaining} seconds.`}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-xs text-yellow-800 text-center">
+                  ⏳ <strong>Please Wait:</strong> The ad is loading. Once it appears, a 30-second countdown will start automatically. You will earn <strong>20 points</strong> when the timer completes.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-8">
