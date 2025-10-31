@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { onAuthStateChange } from './firebase/auth';
 import Login from './pages/Login';
@@ -49,10 +49,11 @@ function App() {
   // Check if user is admin (hardcoded for now - replace with proper admin check)
   const isAdmin = user?.email === 'harshitap649@gmail.com';
 
-  // AdSense banners handled internally in BannerAd component
+  // Inner component to access useLocation
+  function AppContent() {
+    const location = useLocation();
 
-  return (
-    <Router>
+    return (
       <div className="min-h-screen flex flex-col">
         {user && <Navbar user={user} isAdmin={isAdmin} />}
         <div className="flex-1">
@@ -83,8 +84,8 @@ function App() {
             />
           </Routes>
         </div>
-        {/* Bottom Banner Ad - Non-intrusive, always visible */}
-        {user && (
+        {/* Bottom Banner Ad - Hidden on login page and when logout modal might be open */}
+        {user && location.pathname !== '/login' && (
           <div className="border-t border-gray-200 bg-white">
             <div className="max-w-7xl mx-auto px-4 py-2">
               <BannerAd className="w-full" />
@@ -92,6 +93,12 @@ function App() {
           </div>
         )}
       </div>
+    );
+  }
+
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }

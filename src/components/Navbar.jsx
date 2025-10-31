@@ -3,17 +3,26 @@ import { logout } from '../firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Home, Wallet as WalletIcon, DollarSign, Settings, Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import LogoutModal from './LogoutModal';
 
 export default function Navbar({ user, isAdmin }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const handleLogout = async () => {
-    const confirmed = window.confirm('Are you sure you want to logout?');
-    if (!confirmed) return;
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true);
+  };
+
+  const handleLogoutConfirm = async () => {
+    setShowLogoutModal(false);
     await logout();
     navigate('/login');
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutModal(false);
   };
 
   const isActive = (path) => location.pathname === path;
@@ -92,7 +101,7 @@ export default function Navbar({ user, isAdmin }) {
               {user?.email}
             </span>
             <button
-              onClick={handleLogout}
+              onClick={handleLogoutClick}
               className="hidden sm:inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
             >
               <LogOut className="w-4 h-4 mr-2" />
@@ -149,7 +158,7 @@ export default function Navbar({ user, isAdmin }) {
             <button
               onClick={() => {
                 setMobileOpen(false);
-                handleLogout();
+                handleLogoutClick();
               }}
               className="w-full flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700"
             >
@@ -158,6 +167,14 @@ export default function Navbar({ user, isAdmin }) {
           </div>
         </div>
       )}
+
+      {/* Logout Confirmation Modal */}
+      <LogoutModal
+        isOpen={showLogoutModal}
+        onClose={handleLogoutCancel}
+        onConfirm={handleLogoutConfirm}
+        userEmail={user?.email || 'Unknown'}
+      />
     </nav>
   );
 }
