@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Wallet from './pages/Wallet';
 import Withdraw from './pages/Withdraw';
+import HelpSupport from './pages/HelpSupport';
 import AdminPanel from './pages/AdminPanel';
 import Navbar from './components/Navbar';
 import Loading from './components/Loading';
@@ -73,6 +74,10 @@ function App() {
             <Route 
               path="/withdraw" 
               element={user ? <Withdraw user={user} /> : <Navigate to="/login" />} 
+            />
+            <Route 
+              path="/help" 
+              element={user ? <HelpSupport user={user} /> : <Navigate to="/login" />} 
             />
             <Route 
               path="/admin" 

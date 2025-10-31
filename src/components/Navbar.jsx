@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { logout } from '../firebase/auth';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Home, Wallet as WalletIcon, DollarSign, Settings, Menu, X } from 'lucide-react';
+import { LogOut, Home, Wallet as WalletIcon, DollarSign, Settings, Menu, X, HelpCircle } from 'lucide-react';
 import { useState } from 'react';
 import LogoutModal from './LogoutModal';
 
@@ -72,6 +72,17 @@ export default function Navbar({ user, isAdmin }) {
                 <DollarSign className="w-4 h-4 mr-1" />
                 Withdraw
               </Link>
+              <Link
+                to="/help"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isActive('/help')
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <HelpCircle className="w-4 h-4 mr-1" />
+                Help & Support
+              </Link>
               {isAdmin && (
                 <Link
                   to="/admin"
@@ -141,6 +152,15 @@ export default function Navbar({ user, isAdmin }) {
               }`}
             >
               <DollarSign className="w-4 h-4 mr-2" /> Withdraw
+            </Link>
+            <Link
+              to="/help"
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium ${
+                isActive('/help') ? 'bg-purple-50 text-purple-700' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4 mr-2" /> Help & Support
             </Link>
             {isAdmin && (
               <Link

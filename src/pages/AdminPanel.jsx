@@ -7,15 +7,18 @@ import {
   updateOffer,
   updateWithdrawalStatus,
   banUser,
-  adjustUserPoints
+  adjustUserPoints,
+  getAllSupportMessages,
+  updateSupportMessageStatus
 } from '../firebase/firestore';
-import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare } from 'lucide-react';
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [offers, setOffers] = useState([]);
+  const [supportMessages, setSupportMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,15 +27,17 @@ export default function AdminPanel() {
 
   const loadData = async () => {
     setLoading(true);
-    const [usersResult, withdrawalsResult, offersResult] = await Promise.all([
+    const [usersResult, withdrawalsResult, offersResult, supportResult] = await Promise.all([
       getAllUsers(),
       getAllWithdrawals(),
       getActiveOffers(),
+      getAllSupportMessages(),
     ]);
 
     if (usersResult.success) setUsers(usersResult.users);
     if (withdrawalsResult.success) setWithdrawals(withdrawalsResult.withdrawals);
     if (offersResult.success) setOffers(offersResult.offers);
+    if (supportResult.success) setSupportMessages(supportResult.messages);
     setLoading(false);
   };
 
@@ -90,10 +95,26 @@ export default function AdminPanel() {
   }
 
   const pendingWithdrawals = withdrawals.filter(w => w.status === 'pending');
+  const pendingSupportMessages = supportMessages.filter(m => !m.read || m.status === 'pending');
   const totalUsers = users.length;
   const totalEarnings = users.reduce((sum, u) => sum + (u.totalEarned || 0), 0);
   const totalWithdrawn = users.reduce((sum, u) => sum + (u.totalWithdrawn || 0), 0);
   const estimatedProfit = totalEarnings * 0.7; // Rough estimate
+
+  const handleMarkAsRead = async (messageId) => {
+    const result = await updateSupportMessageStatus(messageId, 'read', true);
+    if (result.success) {
+      await loadData();
+    }
+  };
+
+  const handleUpdateStatus = async (messageId, status) => {
+    const result = await updateSupportMessageStatus(messageId, status, true);
+    if (result.success) {
+      await loadData();
+      alert(`Message marked as ${status}`);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -128,6 +149,7 @@ export default function AdminPanel() {
           {[
             { id: 'users', label: 'Users', icon: Users },
             { id: 'withdrawals', label: `Withdrawals (${pendingWithdrawals.length})`, icon: DollarSign },
+            { id: 'support', label: `Support (${pendingSupportMessages.length})`, icon: HelpCircle },
             { id: 'offers', label: 'Offers', icon: Gift },
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -160,6 +182,14 @@ export default function AdminPanel() {
           withdrawals={withdrawals}
           onApprove={handleApproveWithdrawal}
           onReject={handleRejectWithdrawal}
+        />
+      )}
+
+      {activeTab === 'support' && (
+        <SupportMessagesTab
+          messages={supportMessages}
+          onMarkAsRead={handleMarkAsRead}
+          onUpdateStatus={handleUpdateStatus}
         />
       )}
 
@@ -302,6 +332,99 @@ function WithdrawalsTab({ withdrawals, onApprove, onReject }) {
                     </>
                   )}
                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SupportMessagesTab({ messages, onMarkAsRead, onUpdateStatus }) {
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleString();
+  };
+
+  const getStatusColor = (status, read) => {
+    if (!read) return 'bg-blue-100 text-blue-800';
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'read': return 'bg-blue-100 text-blue-800';
+      case 'replied': return 'bg-green-100 text-green-800';
+      case 'resolved': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Support Messages</h2>
+      {messages.length === 0 ? (
+        <div className="text-center py-12">
+          <MessageSquare className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">No support messages yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`border rounded-lg p-5 ${
+                !message.read 
+                  ? 'border-blue-300 bg-blue-50' 
+                  : message.status === 'pending'
+                  ? 'border-yellow-300 bg-yellow-50'
+                  : 'border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-lg font-semibold text-gray-800">{message.subject}</h3>
+                    {!message.read && (
+                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-600 text-white">
+                        New
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p><strong>From:</strong> {message.userName} ({message.userEmail})</p>
+                    <p><strong>User ID:</strong> {message.userId}</p>
+                    <p><strong>Date:</strong> {formatTimestamp(message.createdAt)}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(message.status, message.read)}`}>
+                    {message.read ? message.status : 'Unread'}
+                  </span>
+                  <div className="flex gap-2">
+                    {!message.read && (
+                      <button
+                        onClick={() => onMarkAsRead(message.id)}
+                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Mark Read
+                      </button>
+                    )}
+                    <select
+                      value={message.status}
+                      onChange={(e) => onUpdateStatus(message.id, e.target.value)}
+                      className="px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white"
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="read">Read</option>
+                      <option value="replied">Replied</option>
+                      <option value="resolved">Resolved</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
+                <p className="text-gray-700 whitespace-pre-wrap">{message.message}</p>
               </div>
             </div>
           ))}
@@ -468,4 +591,3 @@ function OffersTab({ offers, onReload }) {
     </div>
   );
 }
-

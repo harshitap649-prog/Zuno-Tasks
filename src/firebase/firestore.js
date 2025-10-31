@@ -381,3 +381,58 @@ export const adjustUserPoints = async (uid, points) => {
   }
 };
 
+// Support Messages
+export const submitSupportMessage = async (uid, messageData) => {
+  try {
+    const supportRef = collection(db, 'supportMessages');
+    await addDoc(supportRef, {
+      userId: uid,
+      userName: messageData.userName,
+      userEmail: messageData.userEmail,
+      subject: messageData.subject,
+      message: messageData.message,
+      status: 'pending', // pending, read, replied, resolved
+      createdAt: serverTimestamp(),
+      read: false,
+      readAt: null,
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const getAllSupportMessages = async () => {
+  try {
+    const supportRef = collection(db, 'supportMessages');
+    const q = query(supportRef, orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const messages = [];
+    querySnapshot.forEach((doc) => {
+      messages.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
+    
+    return { success: true, messages };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateSupportMessageStatus = async (messageId, status, read = true) => {
+  try {
+    const messageRef = doc(db, 'supportMessages', messageId);
+    await updateDoc(messageRef, {
+      status,
+      read,
+      readAt: read ? serverTimestamp() : null,
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
