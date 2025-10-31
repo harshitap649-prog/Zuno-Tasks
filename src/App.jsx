@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { onAuthStateChange } from './firebase/auth';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +14,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const popunderLoadedRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -29,6 +30,31 @@ function App() {
       setLoading(false);
     }
   }, []);
+
+  // Load Popunder ad only after user interaction and with delay (less intrusive)
+  useEffect(() => {
+    if (!user || popunderLoadedRef.current) return;
+
+    // Only load popunder after 10 seconds and user is on dashboard/wallet/withdraw
+    const timer = setTimeout(() => {
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/login' && currentPath !== '/') {
+        try {
+          // Monetag Popunder - Loads on user interaction
+          const popunderScript = document.createElement('script');
+          // Escape the script properly to avoid build issues
+          const popunderCode = '(function(s){s.dataset.zone=\'10120955\',s.src=\'https://al5sm.com/tag.min.js\'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement(\'script\')))';
+          popunderScript.textContent = popunderCode;
+          document.head.appendChild(popunderScript);
+          popunderLoadedRef.current = true;
+        } catch (err) {
+          console.error('Error loading popunder ad:', err);
+        }
+      }
+    }, 10000); // 10 second delay - less intrusive
+
+    return () => clearTimeout(timer);
+  }, [user]);
 
   if (error) {
     return (

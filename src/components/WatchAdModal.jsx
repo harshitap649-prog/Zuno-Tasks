@@ -34,24 +34,36 @@ export default function WatchAdModal({ onClose, onComplete }) {
   }, [countdown, onComplete]);
 
   const triggerServiceWorkerAd = () => {
-    // Service worker-based ads work via push notifications or interstitials
-    // The ad will automatically show when service worker detects user interaction
+    // Trigger Monetag Push Notification ad for "Watch Ad" feature
     setAdTriggered(true);
     
-    // Try to trigger ad via service worker message
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'TRIGGER_AD',
-        zoneId: 10120815
-      });
-    }
+    // Load Monetag Push Notification script dynamically
+    const pushAdScript = document.createElement('script');
+    pushAdScript.src = 'https://3nbf4.com/act/files/tag.min.js?z=10120949';
+    pushAdScript.setAttribute('data-cfasync', 'false');
+    pushAdScript.async = true;
     
-    // Alternative: Some networks trigger ads on page navigation or window focus
-    // This ensures the ad network detects user engagement
+    // When script loads, ad will show automatically
+    pushAdScript.onload = () => {
+      console.log('Monetag Push Notification ad loaded');
+    };
+    
+    pushAdScript.onerror = () => {
+      console.error('Failed to load Push Notification ad');
+      // Fallback: complete after delay even if ad fails
+      setTimeout(() => {
+        if (!adCompletedRef.current) {
+          adCompletedRef.current = true;
+          setWatching(false);
+          onComplete();
+        }
+      }, 30000);
+    };
+    
+    document.head.appendChild(pushAdScript);
+    
+    // Focus window to ensure ad triggers
     window.focus();
-    
-    // Simulate ad showing - service worker will handle actual ad display
-    // Most service worker ads show automatically after user interaction
   };
 
   // Listen for ad completion events from service worker
