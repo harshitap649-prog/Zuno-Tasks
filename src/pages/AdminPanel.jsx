@@ -202,7 +202,7 @@ function UsersTab({ users, onBan, onAdjustPoints }) {
                   {user.points?.toLocaleString() || 0}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {(user.totalEarned || 0).toLocaleString()}
+                  ₹{((user.totalEarned || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
