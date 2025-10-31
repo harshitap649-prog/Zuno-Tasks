@@ -84,14 +84,12 @@ function App() {
             />
           </Routes>
         </div>
-        {/* Bottom Banner Ad - Hidden on login page and when logout modal might be open */}
-        {user && location.pathname !== '/login' && (
-          <div className="border-t border-gray-200 bg-white">
-            <div className="max-w-7xl mx-auto px-4 py-2">
-              <BannerAd className="w-full" />
-            </div>
+        {/* Bottom Banner Ad - Always visible on all pages (non-intrusive) */}
+        <div className="border-t border-gray-200 bg-white sticky bottom-0 z-40">
+          <div className="max-w-7xl mx-auto px-2 sm:px-4 py-2">
+            <BannerAd className="w-full" />
           </div>
-        )}
+        </div>
       </div>
     );
   }
