@@ -232,7 +232,7 @@ function UsersTab({ users, onBan, onAdjustPoints }) {
                   {user.points?.toLocaleString() || 0}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  ₹{((user.totalEarned || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₹{((user.totalEarned || 0) / 10).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -436,14 +436,49 @@ function SupportMessagesTab({ messages, onMarkAsRead, onUpdateStatus }) {
 
 function OffersTab({ offers, onReload }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showOfferToroConfig, setShowOfferToroConfig] = useState(false);
+  const [showInstantNetworkConfig, setShowInstantNetworkConfig] = useState(false);
+  const [showCPALeadConfig, setShowCPALeadConfig] = useState(false);
+  const [offertoroApiKey, setOffertoroApiKey] = useState('');
+  const [instantNetwork, setInstantNetwork] = useState('');
+  const [instantNetworkApiKey, setInstantNetworkApiKey] = useState('');
+  const [cpaleadPublisherId, setCPALeadPublisherId] = useState('');
+  const [cpaleadLinkLockerUrl, setCPALeadLinkLockerUrl] = useState('');
+  const [cpaleadFileLockerUrl, setCPALeadFileLockerUrl] = useState('');
+  const [cpaleadQuizUrl, setCPALeadQuizUrl] = useState('');
+  const [syncing, setSyncing] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     rewardPoints: '',
     link: '',
     active: true,
+    category: 'general',
+    isAffiliate: false,
   });
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Load OfferToro API key from localStorage or env
+    const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
+    setOffertoroApiKey(savedKey);
+    
+    // Load instant network config
+    const savedNetwork = localStorage.getItem('instant_network') || '';
+    const savedNetworkKey = localStorage.getItem('instant_network_api_key') || '';
+    setInstantNetwork(savedNetwork);
+    setInstantNetworkApiKey(savedNetworkKey);
+    
+    // Load CPAlead config
+    const savedCPALeadId = localStorage.getItem('cpalead_publisher_id') || '';
+    const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
+    const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
+    const savedQuiz = localStorage.getItem('cpalead_quiz_url') || '';
+    setCPALeadPublisherId(savedCPALeadId);
+    setCPALeadLinkLockerUrl(savedLinkLocker);
+    setCPALeadFileLockerUrl(savedFileLocker);
+    setCPALeadQuizUrl(savedQuiz);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -459,10 +494,45 @@ function OffersTab({ offers, onReload }) {
     if (result.success) {
       alert('Offer added successfully!');
       setShowAddForm(false);
-      setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true });
+      setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'general', isAffiliate: false });
       onReload();
     } else {
       alert('Failed to add offer: ' + result.error);
+    }
+  };
+
+  const handleSyncOfferToro = async () => {
+    if (!offertoroApiKey) {
+      alert('Please enter your OfferToro API key first');
+      setShowOfferToroConfig(true);
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      // Save API key to localStorage
+      localStorage.setItem('offertoro_api_key', offertoroApiKey);
+
+      // Note: OfferToro primarily uses iframe embed, so we'll enable it
+      // If you have API access, you can fetch offers here
+      alert('OfferToro offerwall is ready! Users can now see offers when they visit the Tasks page.\n\nNote: For full integration, configure postback URL in your OfferToro dashboard.');
+      
+      // Optionally, you can try to fetch via API if available
+      // const { fetchOffersFromAPI, formatOfferToroOffer } = await import('../utils/offertoro');
+      // const offers = await fetchOffersFromAPI(offertoroApiKey, 'test');
+      // if (offers.length > 0) {
+      //   for (const offer of offers) {
+      //     const formatted = formatOfferToroOffer(offer);
+      //     await addOffer({ ...formatted, source: 'offertoro' });
+      //   }
+      //   alert(`Synced ${offers.length} offers from OfferToro!`);
+      //   onReload();
+      // }
+    } catch (error) {
+      console.error('Error syncing OfferToro:', error);
+      alert('Error syncing OfferToro: ' + error.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -470,98 +540,578 @@ function OffersTab({ offers, onReload }) {
     <div className="card">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Offers & Tasks</h2>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="btn-primary flex items-center"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Offer
-        </button>
-        <button
-          onClick={async () => {
-            const samples = [
-              {
-                title: 'Install Telegram',
-                description: 'Download and install Telegram app, open once',
-                rewardPoints: 120,
-                link: 'https://telegram.org/',
-              },
-              {
-                title: 'Visit Flipkart Deal',
-                description: 'Open the page and browse for 30 seconds',
-                rewardPoints: 60,
-                link: 'https://www.flipkart.com/',
-              },
-              {
-                title: 'Watch YouTube Trailer',
-                description: 'Open link and watch at least 30 seconds',
-                rewardPoints: 50,
-                link: 'https://www.youtube.com/',
-              },
-            ];
-            for (const s of samples) {
-              await addOffer(s);
-            }
-            alert('Sample offers added.');
-            onReload();
-          }}
-          className="ml-3 bg-gray-100 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-200"
-        >
-          Load Sample Offers
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowInstantNetworkConfig(!showInstantNetworkConfig)}
+            className="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            Instant Networks
+          </button>
+          <button
+            onClick={() => setShowOfferToroConfig(!showOfferToroConfig)}
+            className="bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            OfferToro
+          </button>
+          <button
+            onClick={() => setShowCPALeadConfig(!showCPALeadConfig)}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-blue-700 hover:to-purple-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            CPAlead VIP
+          </button>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="btn-primary flex items-center"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Offer / Affiliate Link
+          </button>
+          <button
+            onClick={async () => {
+              const profitableTasks = [
+                {
+                  title: 'Install Paytm - Complete KYC',
+                  description: 'Download Paytm app, complete KYC verification using referral. Safe digital wallet!',
+                  rewardPoints: 500,
+                  link: 'https://paytm.com/r/YOUR_REFERRAL_CODE',
+                },
+                {
+                  title: 'Install PhonePe - Set Up UPI',
+                  description: 'Install PhonePe app from this link to earn points. Complete UPI setup after installation. Note: If you already have PhonePe installed, you will not earn points for this task.',
+                  rewardPoints: 400,
+                  link: 'https://phon.pe/ktkefvjx',
+                },
+                {
+                  title: 'Install Raid: Shadow Legends - Reach Level 10',
+                  description: 'Download Raid: Shadow Legends, complete tutorial, reach level 10. Epic RPG game!',
+                  rewardPoints: 400,
+                  link: 'https://play.google.com/store/apps/details?id=com.plarium.raidlegends',
+                },
+                {
+                  title: 'Install Flipkart App - Browse Products',
+                  description: 'Download Flipkart app, browse products for 3 minutes. No purchase needed!',
+                  rewardPoints: 250,
+                  link: 'https://play.google.com/store/apps/details?id=com.flipkart.android',
+                },
+                {
+                  title: 'Install Disney+ Hotstar - Watch Free Content',
+                  description: 'Download Disney+ Hotstar, create account, watch any video for 10 minutes.',
+                  rewardPoints: 350,
+                  link: 'https://play.google.com/store/apps/details?id=in.startv.hotstar',
+                },
+              ];
+              
+              const confirm = window.confirm(`This will add ${profitableTasks.length} profitable task templates.\n\n⚠️ Remember to replace "YOUR_REFERRAL_CODE" with your actual referral codes!\n\nContinue?`);
+              if (!confirm) return;
+              
+              for (const task of profitableTasks) {
+                await addOffer(task);
+              }
+              alert(`✅ ${profitableTasks.length} profitable tasks added!\n\n💡 Don't forget to edit the links and replace YOUR_REFERRAL_CODE with your actual affiliate codes for maximum revenue!`);
+              onReload();
+            }}
+            className="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            Load Profitable Tasks
+          </button>
+        </div>
       </div>
 
+      {/* Instant Approval Networks Configuration */}
+      {showInstantNetworkConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Gift className="w-6 h-6 mr-2 text-green-600" />
+            Instant Approval Networks
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            These networks offer <strong>instant approval</strong> (5 minutes to 24 hours) so you can start earning immediately!
+            Recommended: <a href="https://offerwall.me/" target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline font-semibold">Offerwall.me</a> (5-minute setup)
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Network
+              </label>
+              <select
+                value={instantNetwork}
+                onChange={(e) => setInstantNetwork(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="">-- Select Network --</option>
+                <option value="offerwallme">Offerwall.me (Instant - 5 min setup)</option>
+                <option value="offerwallpro">Offerwall PRO (Instant approval)</option>
+                <option value="bitlabs">Bitlabs (24-hour approval)</option>
+                <option value="adgatemedia">AdGate Media (24-48 hour approval)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                API Key / Publisher ID
+              </label>
+              <input
+                type="text"
+                value={instantNetworkApiKey}
+                onChange={(e) => setInstantNetworkApiKey(e.target.value)}
+                placeholder="Enter your API key from the network"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Get your API key from: {instantNetwork === 'offerwallme' && 'https://offerwall.me/'}
+                {instantNetwork === 'offerwallpro' && 'https://offerwallpro.com/'}
+                {instantNetwork === 'bitlabs' && 'https://bitlabs.gg/'}
+                {instantNetwork === 'adgatemedia' && 'https://www.adgatemedia.com/'}
+                {!instantNetwork && 'Select a network first'}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!instantNetwork || !instantNetworkApiKey) {
+                    alert('Please select a network and enter your API key');
+                    return;
+                  }
+                  
+                  // Save configuration
+                  localStorage.setItem('instant_network', instantNetwork);
+                  localStorage.setItem('instant_network_api_key', instantNetworkApiKey);
+                  
+                  alert(`✅ ${instantNetwork} configured successfully!\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see the offerwall from ${instantNetwork}\n3. Offers will appear automatically\n\n💡 Tip: Check your network dashboard for available offers!`);
+                  
+                  setShowInstantNetworkConfig(false);
+                  onReload();
+                }}
+                className="btn-primary flex items-center"
+              >
+                Enable Network
+              </button>
+              <button
+                onClick={() => setShowInstantNetworkConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            {instantNetwork && instantNetworkApiKey && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ Network configured. Offers will sync automatically or can be viewed via offerwall.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CPAlead Configuration */}
+      {showCPALeadConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Gift className="w-6 h-6 mr-2 text-blue-600" />
+            CPAlead VIP Integration
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            You're verified on CPAlead! Enter your <strong>Direct Link URL</strong> to start earning.
+            <br /><strong>📊 Goal:</strong> Earn $50 in 8 days to keep your account active.
+            <br />To get your Direct Link:
+            <br />1. Go to CPAlead → Reward Tools → Your Offerwall
+            <br />2. Click <strong>"GET CODE"</strong> button
+            <br />3. Copy the <strong>"Direct Link"</strong> URL
+            <br />4. Paste it here
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CPAlead Direct Link URL
+              </label>
+              <input
+                type="text"
+                value={cpaleadPublisherId}
+                onChange={(e) => setCPALeadPublisherId(e.target.value.trim())}
+                placeholder="Paste Offerwall Direct Link URL (e.g., https://zwidgetbv3dft.xyz/list/gMez9KHT)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Get this from: CPAlead Dashboard → Reward Tools → Your Offerwall → "GET CODE" → Copy "Direct Link"
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CPAlead Link Locker URL (Optional)
+              </label>
+              <input
+                type="text"
+                value={cpaleadLinkLockerUrl}
+                onChange={(e) => setCPALeadLinkLockerUrl(e.target.value.trim())}
+                placeholder="Paste Link Locker Direct Link URL (e.g., https://qckclk.com/unlock/Nar3BFq)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Get this from: CPAlead Dashboard → Reward Tools → Your Link Locker → "GET CODE" → Copy "Direct Link"
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CPAlead File Locker URL (Optional)
+              </label>
+              <input
+                type="text"
+                value={cpaleadFileLockerUrl}
+                onChange={(e) => setCPALeadFileLockerUrl(e.target.value.trim())}
+                placeholder="Paste File Locker Direct Link URL (e.g., https://akamaicdn.org/unlock/ksraA49S)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Get this from: CPAlead Dashboard → Reward Tools → Your File Locker → "GET CODE" → Copy "Direct Link"
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                CPAlead Quiz URL (Optional)
+              </label>
+              <input
+                type="text"
+                value={cpaleadQuizUrl}
+                onChange={(e) => setCPALeadQuizUrl(e.target.value.trim())}
+                placeholder="Paste Quiz Direct Link URL (e.g., https://zwidgetbv3dft.xyz/quiz/XXXXX)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Get this from: CPAlead Dashboard → Reward Tools → Your Quiz → "GET CODE" → Copy "Direct Link"
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (!cpaleadPublisherId) {
+                    alert('Please enter your CPAlead Offerwall Direct Link URL');
+                    return;
+                  }
+                  
+                  // Save all configurations
+                  localStorage.setItem('cpalead_publisher_id', cpaleadPublisherId);
+                  if (cpaleadLinkLockerUrl) {
+                    localStorage.setItem('cpalead_link_locker_url', cpaleadLinkLockerUrl);
+                  }
+                  if (cpaleadFileLockerUrl) {
+                    localStorage.setItem('cpalead_file_locker_url', cpaleadFileLockerUrl);
+                  }
+                  if (cpaleadQuizUrl) {
+                    localStorage.setItem('cpalead_quiz_url', cpaleadQuizUrl);
+                  }
+                  
+                  let message = `✅ CPAlead tools configured successfully!\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see all configured CPAlead tools\n3. Users complete offers → You earn money!\n\n🎯 Remember: You need to earn $50 in 8 days!`;
+                  if (cpaleadLinkLockerUrl) message += '\n\n✅ Link Locker added';
+                  if (cpaleadFileLockerUrl) message += '\n\n✅ File Locker added';
+                  if (cpaleadQuizUrl) message += '\n\n✅ Quiz added';
+                  
+                  alert(message);
+                  
+                  setShowCPALeadConfig(false);
+                  onReload();
+                }}
+                className="btn-primary flex items-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              >
+                Enable CPAlead Tools
+              </button>
+              <button
+                onClick={() => setShowCPALeadConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            {cpaleadPublisherId && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ CPAlead configured. Offerwall will be available to users on the Tasks page.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* OfferToro Configuration */}
+      {showOfferToroConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border-2 border-purple-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Gift className="w-6 h-6 mr-2 text-purple-600" />
+            OfferToro Integration
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Get your API key from{' '}
+            <a href="https://www.offertoro.com/" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">
+              OfferToro Dashboard
+            </a>
+            . Once configured, users will see OfferToro offers on the Tasks page.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                OfferToro API Key
+              </label>
+              <input
+                type="text"
+                value={offertoroApiKey}
+                onChange={(e) => setOffertoroApiKey(e.target.value)}
+                placeholder="Enter your OfferToro API key"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleSyncOfferToro}
+                disabled={syncing || !offertoroApiKey}
+                className="btn-primary flex items-center"
+              >
+                {syncing ? 'Configuring...' : 'Enable OfferToro'}
+              </button>
+              <button
+                onClick={() => setShowOfferToroConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            {offertoroApiKey && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ API key saved. OfferToro offerwall will be available to users.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Affiliate Task Templates */}
+      {!showAddForm && (
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h3 className="text-lg font-semibold text-gray-800 mb-3">Quick Add Affiliate Tasks</h3>
+          <p className="text-sm text-gray-600 mb-4">Click any button below to quickly add common affiliate tasks. Edit the links with your affiliate codes before saving.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Install Paytm - Complete KYC',
+                  description: 'Download Paytm app using my referral, complete KYC verification. Safe digital wallet! Takes 5 minutes.',
+                  rewardPoints: '500',
+                  link: 'https://paytm.com/r/YOUR_REFERRAL_CODE',
+                  active: true,
+                  category: 'finance',
+                  isAffiliate: true,
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 text-sm"
+            >
+              💰 Paytm Referral
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Install PhonePe - Set Up UPI',
+                  description: 'Install PhonePe app from this link to earn points. Complete UPI setup after installation. Note: If you already have PhonePe installed, you will not earn points for this task.',
+                  rewardPoints: '400',
+                  link: 'https://phon.pe/ktkefvjx',
+                  active: true,
+                  category: 'finance',
+                  isAffiliate: true,
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 text-sm"
+            >
+              💳 PhonePe Referral
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Install Raid: Shadow Legends - Reach Level 10',
+                  description: 'Download Raid: Shadow Legends from Play Store, complete tutorial, and reach account level 10. Epic RPG game!',
+                  rewardPoints: '400',
+                  link: 'https://play.google.com/store/apps/details?id=com.plarium.raidlegends',
+                  active: true,
+                  category: 'games',
+                  isAffiliate: false,
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 text-sm"
+            >
+              🎮 Game Install
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Install Flipkart App - Browse Products',
+                  description: 'Download Flipkart shopping app, create account if new, and browse products for 3 minutes. No purchase needed!',
+                  rewardPoints: '250',
+                  link: 'https://play.google.com/store/apps/details?id=com.flipkart.android',
+                  active: true,
+                  category: 'shopping',
+                  isAffiliate: false,
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-yellow-600 text-white py-2 px-4 rounded-lg hover:bg-yellow-700 text-sm"
+            >
+              🛒 Shopping App
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Install Disney+ Hotstar - Watch Free Content',
+                  description: 'Download Disney+ Hotstar, create free account, and watch any video for 10 minutes. Movies, shows, and sports!',
+                  rewardPoints: '350',
+                  link: 'https://play.google.com/store/apps/details?id=in.startv.hotstar',
+                  active: true,
+                  category: 'entertainment',
+                  isAffiliate: false,
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 text-sm"
+            >
+              📺 Streaming App
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Follow Us on Instagram',
+                  description: 'Follow our Instagram account @YourUsername, like 5 recent posts, and stay following for at least 7 days. Support us!',
+                  rewardPoints: '100',
+                  link: 'https://instagram.com/YourUsername',
+                  active: true,
+                  category: 'social',
+                  isAffiliate: false,
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-pink-600 text-white py-2 px-4 rounded-lg hover:bg-pink-700 text-sm"
+            >
+              📱 Social Media
+            </button>
+          </div>
+        </div>
+      )}
+
       {showAddForm && (
-        <form onSubmit={handleSubmit} className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+        <form onSubmit={handleSubmit} className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4 border-2 border-purple-200">
+          <div className="bg-purple-100 p-3 rounded-lg mb-4">
+            <p className="text-sm text-purple-800">
+              <strong>💡 Tip:</strong> For affiliate links, replace placeholder codes (like YOUR_REFERRAL_CODE) with your actual referral codes or affiliate IDs to start earning commissions!
+            </p>
+          </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Task Title *
+            </label>
             <input
               type="text"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              placeholder="e.g., Install Paytm - Complete KYC"
               required
             />
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description *
+            </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
               rows="3"
+              placeholder="Describe what users need to do to complete this task..."
               required
             />
           </div>
+          
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reward Points</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Reward Points *
+                <span className="text-xs text-gray-500 ml-1">(10 points = ₹1)</span>
+              </label>
               <input
                 type="number"
                 value={formData.rewardPoints}
                 onChange={(e) => setFormData({ ...formData, rewardPoints: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                placeholder="e.g., 500"
+                min="1"
                 required
               />
+              {formData.rewardPoints && (
+                <p className="text-xs text-gray-600 mt-1">
+                  = ₹{(parseInt(formData.rewardPoints) / 10).toFixed(2)} to user
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Task Link</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Task / Affiliate Link *
+              </label>
               <input
                 type="url"
                 value={formData.link}
                 onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                placeholder="https://example.com/your-affiliate-link"
                 required
               />
+              <p className="text-xs text-gray-600 mt-1">
+                {formData.link.includes('YOUR_REFERRAL_CODE') || formData.link.includes('YOUR_') ? (
+                  <span className="text-orange-600">⚠️ Replace placeholder with your actual affiliate code!</span>
+                ) : (
+                  <span className="text-green-600">✓ Link format looks good</span>
+                )}
+              </p>
             </div>
           </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn-primary w-full"
-          >
-            {submitting ? 'Adding...' : 'Add Offer'}
-          </button>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="isAffiliate"
+                checked={formData.isAffiliate}
+                onChange={(e) => setFormData({ ...formData, isAffiliate: e.target.checked })}
+                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+              />
+              <label htmlFor="isAffiliate" className="ml-2 text-sm text-gray-700">
+                This is an affiliate link (I earn commission)
+              </label>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn-primary flex-1"
+            >
+              {submitting ? 'Adding...' : 'Add Task / Affiliate Link'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm(false);
+                setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'general', isAffiliate: false });
+              }}
+              className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
 

@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
-import { getUserData, getActiveOffers, updateWatchCount, subscribeToOffers } from '../firebase/firestore';
-import { Coins, PlayCircle, Gift, TrendingUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { getUserData, getActiveOffers, updateWatchCount, subscribeToOffers, getUserReferralCode } from '../firebase/firestore';
+import { Coins, PlayCircle, Gift, TrendingUp, Copy, Check } from 'lucide-react';
 import WatchAdModal from '../components/WatchAdModal';
 import SidebarAd from '../components/SidebarAd';
 
 export default function Dashboard({ user }) {
+  const navigate = useNavigate();
   const [userData, setUserData] = useState(null);
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdModal, setShowAdModal] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralLink, setReferralLink] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -17,9 +22,41 @@ export default function Dashboard({ user }) {
     const unsubscribe = subscribeToOffers((updatedOffers) => {
       setOffers(updatedOffers);
     });
+    
+    // Load referral code
+    loadReferralCode();
 
     return () => unsubscribe();
   }, [user]);
+  
+  const loadReferralCode = async () => {
+    if (user) {
+      const result = await getUserReferralCode(user.uid);
+      if (result.success) {
+        setReferralCode(result.referralCode);
+        const baseUrl = window.location.origin;
+        setReferralLink(`${baseUrl}/login?ref=${result.referralCode}`);
+      }
+    }
+  };
+  
+  const handleCopyReferralLink = async () => {
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = referralLink;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -76,15 +113,51 @@ export default function Dashboard({ user }) {
       return;
     }
 
+    // CRITICAL: Load popunder script IMMEDIATELY on click (while user interaction is valid)
+    // This must happen BEFORE any async operations or state updates
+    try {
+      // Check if script already exists
+      let popunderScript = document.querySelector('script[data-adsterra-popunder]');
+      
+      if (!popunderScript) {
+        // Create and load popunder script immediately
+        popunderScript = document.createElement('script');
+        popunderScript.type = 'text/javascript';
+        popunderScript.src = 'https://pl27969271.effectivegatecpm.com/0c/83/73/0c837351d7acd986c96bc088d1b7cbc5.js';
+        popunderScript.async = true;
+        popunderScript.charset = 'utf-8';
+        popunderScript.setAttribute('data-adsterra-popunder', 'true');
+        
+        // Add to head immediately (while click event is still in context)
+        const head = document.head || document.getElementsByTagName('head')[0];
+        if (head) {
+          head.appendChild(popunderScript);
+        } else {
+          document.body.appendChild(popunderScript);
+        }
+        
+        console.log('✅ Popunder script loaded immediately on click');
+      } else {
+        console.log('Popunder script already loaded');
+      }
+      
+      // Ensure window has focus (required for popunders)
+      window.focus();
+      
+    } catch (error) {
+      console.error('Error loading popunder script:', error);
+    }
+
+    // Now open the modal (after script is loaded)
     setShowAdModal(true);
   };
 
   const onAdComplete = async () => {
-    const result = await updateWatchCount(user.uid, 20);
+    const result = await updateWatchCount(user.uid, 10);
     if (result.success) {
       await loadData();
       setShowAdModal(false);
-      alert('🎉 You earned 20 points!');
+      alert('🎉 You earned 10 points!');
     }
   };
 
@@ -97,7 +170,7 @@ export default function Dashboard({ user }) {
   }
 
   const points = userData.points || 0;
-  const rupees = (points / 100).toFixed(2);
+  const rupees = (points / 10).toFixed(2);
   const canWatchAd = userData.watchCount < 3;
 
   const adsenseClient = import.meta.env.VITE_ADSENSE_CLIENT;
@@ -157,7 +230,7 @@ export default function Dashboard({ user }) {
               <h3 className="text-xl font-bold mb-2">Watch Ad</h3>
               <p className="text-sm opacity-90">
                 {canWatchAd
-                  ? 'Earn 20 points by watching an ad'
+                  ? 'Earn 10 points by watching an ad'
                   : 'Daily limit reached (3/3)'}
               </p>
             </div>
@@ -166,19 +239,69 @@ export default function Dashboard({ user }) {
         </button>
 
         <div className="card bg-gradient-to-r from-yellow-400 to-orange-500 text-white">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex-1">
               <h3 className="text-xl font-bold mb-2">Refer & Earn</h3>
-              <p className="text-sm opacity-90">Get 5% bonus from friends' earnings</p>
+              <p className="text-sm opacity-90">Share your link and earn 50 points when your friend earns ₹10!</p>
             </div>
-            <Gift className="w-16 h-16 opacity-50" />
+            <Gift className="w-16 h-16 opacity-50 flex-shrink-0" />
           </div>
+          
+          {referralLink && (
+            <div className="mt-4 pt-4 border-t border-yellow-300 border-opacity-30">
+              <div className="bg-white bg-opacity-10 rounded-lg p-3 mb-3">
+                <p className="text-xs opacity-90 mb-2">Your Referral Link:</p>
+                <div className="flex items-center gap-2 bg-white bg-opacity-20 rounded px-2 py-1.5">
+                  <code className="text-xs flex-1 overflow-x-auto text-white font-mono">
+                    {referralLink}
+                  </code>
+                  <button
+                    onClick={handleCopyReferralLink}
+                    className="flex-shrink-0 p-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 rounded transition-colors"
+                    title="Copy link"
+                  >
+                    {copied ? (
+                      <Check className="w-4 h-4 text-green-200" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              
+              {referralCode && (
+                <div className="bg-white bg-opacity-10 rounded-lg p-3">
+                  <p className="text-xs opacity-90 mb-2">Or share your code:</p>
+                  <div className="flex items-center gap-2 bg-white bg-opacity-20 rounded px-2 py-1.5">
+                    <code className="text-sm flex-1 text-center text-white font-bold tracking-wider">
+                      {referralCode}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(referralCode);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="flex-shrink-0 p-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 rounded transition-colors"
+                      title="Copy code"
+                    >
+                      {copied ? (
+                        <Check className="w-4 h-4 text-green-200" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Tasks Section */}
       <div className="card">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center justify-center mb-6">
           <Gift className="w-6 h-6 mr-2 text-purple-600" />
           Available Tasks
         </h2>
@@ -186,13 +309,26 @@ export default function Dashboard({ user }) {
         {offers.length === 0 ? (
           <div className="text-center py-12">
             <Gift className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500">No tasks available at the moment. Check back later!</p>
+            <p className="text-gray-500 mb-4">No tasks available at the moment. Check back later!</p>
+            <button
+              onClick={() => navigate('/tasks')}
+              className="btn-primary"
+            >
+              Check Tasks Page
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {offers.map((offer) => (
-              <TaskCard key={offer.id} offer={offer} />
-            ))}
+          <div className="text-center py-8">
+            <p className="text-gray-600 mb-6">
+              {offers.length} task{offers.length !== 1 ? 's' : ''} available
+            </p>
+            <button
+              onClick={() => navigate('/tasks')}
+              className="btn-primary flex items-center mx-auto"
+            >
+              <Gift className="w-5 h-5 mr-2" />
+              View All Tasks
+            </button>
           </div>
         )}
       </div>
@@ -221,30 +357,4 @@ export default function Dashboard({ user }) {
   );
 }
 
-function TaskCard({ offer }) {
-  const handleTaskClick = () => {
-    if (offer.link) {
-      window.open(offer.link, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  return (
-    <div className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
-      <h3 className="text-lg font-semibold text-gray-800 mb-2">{offer.title}</h3>
-      <p className="text-gray-600 text-sm mb-4">{offer.description}</p>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center text-purple-600 font-bold">
-          <Coins className="w-5 h-5 mr-1" />
-          {offer.rewardPoints} points
-        </div>
-        <button
-          onClick={handleTaskClick}
-          className="btn-primary text-sm py-2 px-4"
-        >
-          Start Task
-        </button>
-      </div>
-    </div>
-  );
-}
 

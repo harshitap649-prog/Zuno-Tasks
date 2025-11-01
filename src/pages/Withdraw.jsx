@@ -75,10 +75,10 @@ export default function Withdraw({ user }) {
     }
 
     const points = userData.points || 0;
-    const requiredPoints = withdrawAmount * 100;
+    const requiredPoints = withdrawAmount * 10;
 
     if (points < requiredPoints) {
-      setError(`Insufficient balance. You have ${points} points (₹${(points / 100).toFixed(2)}). Need ${requiredPoints} points for ₹${withdrawAmount}.`);
+      setError(`Insufficient balance. You have ${points} points (₹${(points / 10).toFixed(2)}). Need ${requiredPoints} points for ₹${withdrawAmount}.`);
       return;
     }
 
@@ -107,8 +107,8 @@ export default function Withdraw({ user }) {
   }
 
   const points = userData.points || 0;
-  const balance = (points / 100).toFixed(2);
-  const canWithdraw = points >= 10000;
+  const balance = (points / 10).toFixed(2);
+  const canWithdraw = points >= 1000;
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -157,7 +157,7 @@ export default function Withdraw({ user }) {
             {!canWithdraw && (
               <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-yellow-800 text-sm">
-                  ⚠️ You need at least 10,000 points (₹100) to withdraw. You currently have {points.toLocaleString()} points (₹{balance}).
+                  ⚠️ You need at least 1,000 points (₹100) to withdraw. You currently have {points.toLocaleString()} points (₹{balance}).
                 </p>
               </div>
             )}
@@ -191,7 +191,7 @@ export default function Withdraw({ user }) {
                   disabled={!canWithdraw || submitting}
                 />
                 <p className="mt-2 text-sm text-gray-500">
-                  Points required: {amount ? (parseInt(amount) * 100).toLocaleString() : '0'} (₹1 = 100 points)
+                  Points required: {amount ? (parseInt(amount) * 10).toLocaleString() : '0'} (₹1 = 10 points)
                 </p>
               </div>
 
@@ -224,7 +224,7 @@ export default function Withdraw({ user }) {
             <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h3 className="font-semibold text-blue-900 mb-2">ℹ️ Withdrawal Info</h3>
               <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Minimum withdrawal: ₹100 (10,000 points)</li>
+                <li>• Minimum withdrawal: ₹100 (1,000 points)</li>
                 <li>• Processing time: 24-48 hours</li>
                 <li>• Supported: UPI and Paytm</li>
                 <li>• Points will be deducted immediately upon request</li>
@@ -242,11 +242,11 @@ export default function Withdraw({ user }) {
             <div className="pt-4 border-t border-purple-400">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-purple-100">Total Earned:</span>
-                <span className="font-semibold">₹{((userData.totalEarned || 0) / 100).toFixed(2)}</span>
+                <span className="font-semibold">₹{((userData.totalEarned || 0) / 10).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-purple-100">Total Withdrawn:</span>
-                <span className="font-semibold">₹{((userData.totalWithdrawn || 0) / 100).toFixed(2)}</span>
+                <span className="font-semibold">₹{((userData.totalWithdrawn || 0) / 10).toFixed(2)}</span>
               </div>
             </div>
           </div>

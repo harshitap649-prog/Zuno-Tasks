@@ -3,90 +3,113 @@ import { useEffect, useRef } from 'react';
 export default function BannerAd({ className = '' }) {
   const bannerRef = useRef(null);
   const adLoadedRef = useRef(false);
+  const adContainerId = useRef(`banner-ad-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
     if (adLoadedRef.current || !bannerRef.current) return;
 
-    // Load banner ad via service worker or direct script
     const loadBannerAd = () => {
       try {
-        // Create ad container
         const adContainer = bannerRef.current;
         if (!adContainer) return;
 
-        // Method 1: Try service worker ad injection (if available)
-        if ('serviceWorker' in navigator) {
-          // Service worker may inject ads automatically
-          // Trigger focus event to help service worker detect the container
-          window.dispatchEvent(new Event('focus'));
-        }
+        // Clear any existing content
+        adContainer.innerHTML = '';
 
-        // Method 2: Load banner ad script directly (fallback)
-        // This creates an iframe-based banner ad that works reliably
-        const adId = 'banner-ad-' + Date.now();
+        // Create container for Adsterra banner ad
+        const adWrapper = document.createElement('div');
+        adWrapper.id = adContainerId.current;
+        adWrapper.className = 'banner-ad-container';
+        adWrapper.style.cssText = `
+          width: 100%;
+          min-height: 50px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          margin: 0 auto;
+        `;
+
+        // Adsterra Banner Ad Configuration - Exact format from Adsterra
+        const adKey = '92f35e106485494ea7ef96a502ccaa7a';
+        
+        // Create container div where ad will be injected
         const adDiv = document.createElement('div');
-        adDiv.id = adId;
-        adDiv.className = 'banner-ad-container';
-        adDiv.style.cssText = 'width: 100%; min-height: 90px; display: flex; align-items: center; justify-content: center;';
-
-        // Create responsive banner ad
-        // For desktop: 728x90, for mobile: 320x50
-        const isMobile = window.innerWidth < 768;
-        const adWidth = isMobile ? 320 : 728;
-        const adHeight = isMobile ? 50 : 90;
-
-        // Create iframe for ad (service worker will inject actual ad)
-        const adFrame = document.createElement('div');
-        adFrame.style.cssText = `
-          width: ${adWidth}px;
-          height: ${adHeight}px;
+        adDiv.id = `${adContainerId.current}-ad`;
+        adDiv.style.cssText = `
+          width: 320px;
+          height: 50px;
           max-width: 100%;
           margin: 0 auto;
           display: block;
-          background: #f3f4f6;
-          border: 1px solid #e5e7eb;
-          border-radius: 4px;
         `;
-        adFrame.innerHTML = `
-          <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 12px;">
-            <span>Advertisement</span>
-          </div>
-        `;
+        
+        adWrapper.appendChild(adDiv);
+        adContainer.appendChild(adWrapper);
 
-        adDiv.appendChild(adFrame);
-        adContainer.appendChild(adDiv);
+        // Set atOptions globally (must be set before invoke.js loads)
+        // Using exact format from Adsterra
+        if (typeof window !== 'undefined') {
+          window.atOptions = {
+            'key': adKey,
+            'format': 'iframe',
+            'height': 50,
+            'width': 320,
+            'params': {}
+          };
+        }
+        
+        // Create first script - atOptions config (inline script)
+        const configScript = document.createElement('script');
+        configScript.type = 'text/javascript';
+        configScript.text = `atOptions = { 'key': '${adKey}', 'format': 'iframe', 'height': 50, 'width': 320, 'params': {} };`;
+        
+        // Create second script - Adsterra invoke.js (external script)
+        const invokeScript = document.createElement('script');
+        invokeScript.type = 'text/javascript';
+        invokeScript.src = `//www.highperformanceformat.com/${adKey}/invoke.js`; // Protocol-relative URL
+        invokeScript.async = true;
+        invokeScript.charset = 'utf-8';
+        
+        // Append both scripts in order (config first, then invoke)
+        adDiv.appendChild(configScript);
+        adDiv.appendChild(invokeScript);
 
-        // Service worker should replace this placeholder with actual ad
-        // Monitor for ad injection
-        const observer = new MutationObserver((mutations) => {
-          mutations.forEach((mutation) => {
-            if (mutation.addedNodes.length > 0) {
-              // Check if service worker injected ad content
-              const hasAdContent = adContainer.querySelector('iframe, img, script');
-              if (hasAdContent) {
-                adLoadedRef.current = true;
-                observer.disconnect();
-              }
-            }
-          });
-        });
+        // Monitor for ad loading
+        const checkAdLoaded = setInterval(() => {
+          const hasAd = adWrapper.querySelector('iframe, img, a[href]');
+          if (hasAd) {
+            clearInterval(checkAdLoaded);
+            adLoadedRef.current = true;
+          }
+        }, 500);
 
-        observer.observe(adContainer, { childList: true, subtree: true });
+        // Cleanup after 10 seconds
+        setTimeout(() => {
+          clearInterval(checkAdLoaded);
+          adLoadedRef.current = true;
+        }, 10000);
 
-        // Cleanup after component unmounts
-        return () => {
-          observer.disconnect();
+        // Handle script load
+        script.onload = () => {
+          console.log('Adsterra banner ad script loaded');
         };
+
+        script.onerror = () => {
+          console.error('Error loading Adsterra banner ad script');
+          clearInterval(checkAdLoaded);
+        };
+
       } catch (error) {
         console.error('Error loading banner ad:', error);
       }
     };
 
-    // Small delay to ensure DOM is ready
-    const timer = setTimeout(loadBannerAd, 100);
-    adLoadedRef.current = true;
-
-    return () => clearTimeout(timer);
+    // Load ad after component mounts
+    const timer = setTimeout(loadBannerAd, 200);
+    return () => {
+      clearTimeout(timer);
+    };
   }, []);
 
   return (
@@ -95,15 +118,18 @@ export default function BannerAd({ className = '' }) {
       className={`${className} banner-ad-wrapper`}
       style={{
         width: '100%',
-        minHeight: '90px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#ffffff'
+        minHeight: '50px',
+        display: 'block',
+        backgroundColor: '#f9fafb',
+        padding: '12px 0',
+        margin: '0 auto',
+        position: 'relative',
+        zIndex: 50
       }}
+      data-ad-container="true"
+      data-ad-type="banner"
     >
-      {/* Ad will be injected here by service worker or script */}
+      {/* Adsterra Banner Ad will be injected here */}
     </div>
   );
 }
-

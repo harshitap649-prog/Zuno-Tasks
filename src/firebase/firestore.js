@@ -88,6 +88,12 @@ export const updateUserPoints = async (uid, pointsToAdd) => {
         timestamp: serverTimestamp(),
       });
       
+      // Check referral bonus eligibility (10 rupees = 100 points)
+      if (newTotalEarned >= 100 && currentData.totalEarned < 100) {
+        // User just crossed 10 rupees threshold
+        await checkAndAwardReferralBonus(uid);
+      }
+      
       return { success: true, newPoints };
     }
     return { success: false, error: 'User not found' };
@@ -96,7 +102,7 @@ export const updateUserPoints = async (uid, pointsToAdd) => {
   }
 };
 
-export const updateWatchCount = async (uid, rewardPoints = 20) => {
+export const updateWatchCount = async (uid, rewardPoints = 10) => {
   try {
     const userRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userRef);
@@ -132,6 +138,12 @@ export const updateWatchCount = async (uid, rewardPoints = 20) => {
         points: rewardPoints,
         timestamp: serverTimestamp(),
       });
+      
+      // Check referral bonus eligibility (10 rupees = 100 points)
+      if (newTotalEarned >= 100 && currentData.totalEarned < 100) {
+        // User just crossed 10 rupees threshold
+        await checkAndAwardReferralBonus(uid);
+      }
       
       return { success: true, newWatchCount, newPoints };
     }
@@ -222,7 +234,7 @@ export const createWithdrawalRequest = async (uid, amount, upi) => {
     }
     
     const userData = userDoc.data();
-    const pointsRequired = amount * 100; // ₹100 = 10,000 points
+    const pointsRequired = amount * 10; // ₹100 = 1,000 points
     
     if (userData.points < pointsRequired) {
       return { success: false, error: 'Insufficient points' };
@@ -431,6 +443,287 @@ export const updateSupportMessageStatus = async (messageId, status, read = true)
       readAt: read ? serverTimestamp() : null,
     });
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Ongoing Tasks Operations
+export const startTask = async (userId, offerId, offerData) => {
+  try {
+    // Check if task already started
+    const q = query(
+      collection(db, 'ongoingTasks'),
+      where('userId', '==', userId),
+      where('offerId', '==', offerId)
+    );
+    const existing = await getDocs(q);
+    
+    // Filter in JavaScript to check for active statuses
+    const activeTasks = [];
+    existing.forEach((doc) => {
+      const data = doc.data();
+      const validStatuses = ['started', 'in_progress', 'pending_verification'];
+      if (validStatuses.includes(data.status)) {
+        activeTasks.push(doc);
+      }
+    });
+    
+    if (activeTasks.length > 0) {
+      return { success: false, error: 'Task already started' };
+    }
+
+    // Create ongoing task
+    await addDoc(collection(db, 'ongoingTasks'), {
+      userId,
+      offerId,
+      taskTitle: offerData.title,
+      taskDescription: offerData.description,
+      taskLink: offerData.link,
+      rewardPoints: offerData.rewardPoints,
+      status: 'started',
+      startedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const getUserOngoingTasks = async (userId) => {
+  try {
+    const q = query(
+      collection(db, 'ongoingTasks'),
+      where('userId', '==', userId),
+      orderBy('startedAt', 'desc')
+    );
+    const querySnapshot = await getDocs(q);
+    const tasks = [];
+    const validStatuses = ['started', 'in_progress', 'pending_verification'];
+    
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Filter in JavaScript since Firestore 'in' requires composite index
+      if (validStatuses.includes(data.status)) {
+        tasks.push({ id: doc.id, ...data });
+      }
+    });
+    
+    return { success: true, tasks };
+  } catch (error) {
+    // If orderBy fails (no index), try without it
+    try {
+      const q = query(
+        collection(db, 'ongoingTasks'),
+        where('userId', '==', userId)
+      );
+      const querySnapshot = await getDocs(q);
+      const tasks = [];
+      const validStatuses = ['started', 'in_progress', 'pending_verification'];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (validStatuses.includes(data.status)) {
+          tasks.push({ id: doc.id, ...data });
+        }
+      });
+      
+      // Sort by startedAt manually
+      tasks.sort((a, b) => {
+        const aTime = a.startedAt?.toDate?.() || new Date(0);
+        const bTime = b.startedAt?.toDate?.() || new Date(0);
+        return bTime - aTime;
+      });
+      
+      return { success: true, tasks };
+    } catch (retryError) {
+      return { success: false, error: retryError.message, tasks: [] };
+    }
+  }
+};
+
+export const updateTaskStatus = async (taskId, status) => {
+  try {
+    await updateDoc(doc(db, 'ongoingTasks', taskId), {
+      status,
+      updatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const completeTask = async (taskId, userId, rewardPoints) => {
+  try {
+    // Update task status to completed
+    await updateDoc(doc(db, 'ongoingTasks', taskId), {
+      status: 'completed',
+      completedAt: serverTimestamp(),
+    });
+
+    // Award points to user (updateUserPoints will check referral bonus)
+    const result = await updateUserPoints(userId, rewardPoints);
+    
+    if (result.success) {
+      return { success: true };
+    }
+    return { success: false, error: 'Failed to award points' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Generate unique referral code
+const generateReferralCode = (uid) => {
+  // Use first 8 characters of UID + random 4 characters
+  const uidPart = uid.substring(0, 8).toUpperCase();
+  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${uidPart}${randomPart}`;
+};
+
+// Check and award referral bonus when referred user earns 10 rupees (100 points)
+const checkAndAwardReferralBonus = async (referredUserId) => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', referredUserId));
+    if (!userDoc.exists()) return;
+
+    const userData = userDoc.data();
+    
+    // Check if user was referred and bonus not yet awarded
+    if (userData.referredBy && !userData.referralBonusAwarded) {
+      const referrerId = userData.referredBy;
+      
+      // Award 50 points to referrer
+      const referrerDoc = await getDoc(doc(db, 'users', referrerId));
+      if (referrerDoc.exists()) {
+        const referrerData = referrerDoc.data();
+        const newReferrerPoints = referrerData.points + 50;
+        const newReferrerTotalEarned = referrerData.totalEarned + 50;
+        
+        await updateDoc(doc(db, 'users', referrerId), {
+          points: newReferrerPoints,
+          totalEarned: newReferrerTotalEarned,
+        });
+        
+        // Add transaction for referrer
+        await addDoc(collection(db, 'transactions'), {
+          userId: referrerId,
+          type: 'referral_bonus',
+          points: 50,
+          description: `Referral bonus: ${userData.name || userData.email} earned ₹10`,
+          timestamp: serverTimestamp(),
+        });
+        
+        // Mark bonus as awarded for referred user
+        await updateDoc(doc(db, 'users', referredUserId), {
+          referralBonusAwarded: true,
+          referralBonusAwardedAt: serverTimestamp(),
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error awarding referral bonus:', error);
+  }
+};
+
+// Initialize user with referral code (call this when creating new user)
+export const initializeUserReferral = async (uid) => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      
+      // Generate referral code if not exists
+      if (!userData.referralCode) {
+        const referralCode = generateReferralCode(uid);
+        await updateDoc(userRef, {
+          referralCode: referralCode,
+        });
+        return { success: true, referralCode };
+      }
+      
+      return { success: true, referralCode: userData.referralCode };
+    }
+    
+    return { success: false, error: 'User not found' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Register referral when new user signs up with referral code
+export const registerReferral = async (newUserId, referralCode) => {
+  try {
+    // Check if user already exists and has referral info (prevent duplicate referrals)
+    const userDoc = await getDoc(doc(db, 'users', newUserId));
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      // If user already has been referred or has account history, don't process referral
+      if (userData.referredBy || (userData.totalEarned && userData.totalEarned > 0)) {
+        return { success: false, error: 'Referral code can only be used on first-time signup' };
+      }
+    }
+    
+    // Find referrer by code
+    const usersQuery = query(
+      collection(db, 'users'),
+      where('referralCode', '==', referralCode.toUpperCase())
+    );
+    const querySnapshot = await getDocs(usersQuery);
+    
+    if (querySnapshot.empty) {
+      return { success: false, error: 'Invalid referral code' };
+    }
+    
+    const referrerDoc = querySnapshot.docs[0];
+    const referrerId = referrerDoc.id;
+    
+    // Don't allow self-referral
+    if (referrerId === newUserId) {
+      return { success: false, error: 'Cannot refer yourself' };
+    }
+    
+    // Update new user with referral info
+    await updateDoc(doc(db, 'users', newUserId), {
+      referredBy: referrerId,
+      referralBonusAwarded: false,
+    });
+    
+    // Create referral record
+    await addDoc(collection(db, 'referrals'), {
+      referrerId: referrerId,
+      referredUserId: newUserId,
+      referralCode: referralCode.toUpperCase(),
+      status: 'pending', // pending, bonus_awarded
+      createdAt: serverTimestamp(),
+    });
+    
+    return { success: true, referrerId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get user's referral code
+export const getUserReferralCode = async (uid) => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', uid));
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      if (userData.referralCode) {
+        return { success: true, referralCode: userData.referralCode };
+      }
+      
+      // Generate if doesn't exist
+      const result = await initializeUserReferral(uid);
+      return result;
+    }
+    return { success: false, error: 'User not found' };
   } catch (error) {
     return { success: false, error: error.message };
   }

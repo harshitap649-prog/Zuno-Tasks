@@ -1,3 +1,45 @@
+# ⚡ QUICK FIX - Make Site Live Now!
+
+## ✅ Your `index.html` is CORRECT!
+Your file already has the correct code:
+```html
+<script type="module" src="/src/main.jsx"></script>
+```
+
+## 🚀 SOLUTION: Push to GitHub
+
+The GitHub repository has an OLD version. You need to push the CORRECT version.
+
+### Method 1: Using VS Code (EASIEST)
+
+1. **Open VS Code** in your project folder
+2. Click **Source Control** icon (left sidebar - looks like a branch)
+3. You'll see files with "U" (untracked) or "M" (modified)
+4. **Type a commit message:** `Fix index.html for Netlify build`
+5. Click **✓ Commit** button
+6. Click **...** (three dots) → **Push**
+7. **DONE!** Netlify will auto-deploy in 2-3 minutes
+
+### Method 2: Using Git Bash/Terminal
+
+Open Git Bash or Terminal in your project folder (`C:\Users\Keshav\Desktop\Zuno Tasks`) and run:
+
+```bash
+git add index.html
+git commit -m "Fix index.html - use source entry instead of hardcoded assets"
+git push
+```
+
+### Method 3: Manual Push via GitHub Website
+
+If you can't use Git:
+
+1. **Go to GitHub:** https://github.com/harshitap649-prog/Zuno-Tasks
+2. Click on **`index.html`** file
+3. Click **Edit** (pencil icon)
+4. **Replace entire file content** with this:**
+
+```html
 <!doctype html>
 <html lang="en">
   <head>
@@ -35,3 +77,31 @@
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
+```
+
+5. Scroll down → Click **"Commit changes"**
+6. **DONE!** Netlify will auto-deploy
+
+---
+
+## ⏱️ After Pushing
+
+1. **Wait 2-3 minutes**
+2. Go to **Netlify Dashboard**
+3. Check **Deploys** tab
+4. You should see **"Published"** ✅
+5. **Your site is LIVE!** 🎉
+
+---
+
+## 🔍 Verify It's Fixed
+
+After deployment, check:
+- ✅ Build succeeds (no errors)
+- ✅ Site URL loads correctly
+- ✅ All pages work
+
+---
+
+**The fix is simple - just push your correct `index.html` to GitHub!** 🚀
+

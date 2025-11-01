@@ -163,7 +163,7 @@ export default function HelpSupport({ user }) {
             <div className="bg-gray-50 rounded-lg p-4">
               <h4 className="font-medium text-gray-800 mb-2">How do I withdraw money?</h4>
               <p className="text-sm text-gray-600">
-                Go to the Withdraw page, enter your UPI ID or Paytm number, and request a withdrawal. Minimum withdrawal is ₹100 (10,000 points).
+                Go to the Withdraw page, enter your UPI ID or Paytm number, and request a withdrawal. Minimum withdrawal is ₹100 (1,000 points).
               </p>
             </div>
             <div className="bg-gray-50 rounded-lg p-4">

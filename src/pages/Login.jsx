@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { signInWithEmail, signInWithGoogle, signUpWithEmail } from '../firebase/auth';
-import { LogIn, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { LogIn, Mail, Lock, User, AlertCircle, X } from 'lucide-react';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,23 +10,104 @@ export default function Login() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  
+  // Get referral code from URL (only store for signup, not login)
+  useEffect(() => {
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      if (!isLogin) {
+        // Store referral code in localStorage for signup only
+        localStorage.setItem('pendingReferralCode', refCode);
+      } else {
+        // Clear referral code if user is on login page (referrals only work for new signups)
+        localStorage.removeItem('pendingReferralCode');
+      }
+    }
+  }, [searchParams, isLogin]);
+
+  // Convert Firebase errors to user-friendly messages
+  const getErrorMessage = (errorCode, errorMessage) => {
+    const errorMap = {
+      'auth/invalid-email': 'Please enter a valid email address.',
+      'auth/user-disabled': 'This account has been disabled. Please contact support.',
+      'auth/user-not-found': 'No account found with this email address. Please sign up first.',
+      'auth/wrong-password': 'Incorrect password. Please try again or reset your password.',
+      'auth/email-already-in-use': 'This email is already registered. Please sign in instead.',
+      'auth/weak-password': 'Password is too weak. Please use at least 6 characters.',
+      'auth/operation-not-allowed': 'This sign-in method is not enabled. Please contact support.',
+      'auth/invalid-credential': 'Invalid email or password. Please check your credentials and try again.',
+      'auth/too-many-requests': 'Too many failed attempts. Please try again later or reset your password.',
+      'auth/network-request-failed': 'Network error. Please check your internet connection and try again.',
+      'auth/popup-closed-by-user': 'Sign-in popup was closed. Please try again.',
+      'auth/cancelled-popup-request': 'Sign-in was cancelled. Please try again.',
+    };
+
+    // Check if we have a mapped message
+    for (const [key, message] of Object.entries(errorMap)) {
+      if (errorCode?.includes(key) || errorMessage?.includes(key)) {
+        return message;
+      }
+    }
+
+    // Fallback to generic message
+    if (errorMessage) {
+      return errorMessage;
+    }
+    return isLogin 
+      ? 'Sign in failed. Please check your credentials and try again.'
+      : 'Sign up failed. Please check your information and try again.';
+  };
+
+  // Validate form fields
+  const validateForm = () => {
+    const errors = {};
+
+    if (!isLogin && !name.trim()) {
+      errors.name = 'Please enter your full name.';
+    }
+
+    if (!email.trim()) {
+      errors.email = 'Please enter your email address.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = 'Please enter a valid email address (e.g., example@email.com).';
+    }
+
+    if (!password) {
+      errors.password = 'Please enter your password.';
+    } else if (password.length < 6) {
+      errors.password = 'Password must be at least 6 characters long.';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
+
+    // Validate form
+    if (!validateForm()) {
+      return;
+    }
+
     setLoading(true);
 
     let result;
     if (isLogin) {
+      // Clear any stored referral code on login (referrals only work for new signups)
+      localStorage.removeItem('pendingReferralCode');
       result = await signInWithEmail(email, password);
     } else {
-      if (!name.trim()) {
-        setError('Name is required');
-        setLoading(false);
-        return;
-      }
-      result = await signUpWithEmail(email, password, name);
+      // Get referral code from URL or localStorage (only for new signups)
+      const refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode');
+      result = await signUpWithEmail(email, password, name, refCode);
+      // Clear stored referral code after use
+      if (refCode) localStorage.removeItem('pendingReferralCode');
     }
 
     setLoading(false);
@@ -34,21 +115,42 @@ export default function Login() {
     if (result.success) {
       navigate('/dashboard');
     } else {
-      setError(result.error || 'Authentication failed');
+      const friendlyError = getErrorMessage(result.errorCode, result.error);
+      setError(friendlyError);
     }
   };
 
   const handleGoogleAuth = async () => {
     setError('');
+    setFieldErrors({});
     setLoading(true);
 
-    const result = await signInWithGoogle();
+    // Get referral code from URL or localStorage (only for new signups)
+    let refCode = null;
+    if (!isLogin) {
+      // Only use referral code for signup, not login
+      refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode');
+      if (refCode) localStorage.removeItem('pendingReferralCode');
+    } else {
+      // Clear any stored referral code on login (referrals only work for new signups)
+      localStorage.removeItem('pendingReferralCode');
+    }
+    const result = await signInWithGoogle(refCode);
+    
     setLoading(false);
 
     if (result.success) {
       navigate('/dashboard');
     } else {
-      setError(result.error || 'Google authentication failed');
+      const friendlyError = getErrorMessage(result.errorCode, result.error);
+      setError(friendlyError || 'Google sign-in failed. Please try again.');
+    }
+  };
+
+  // Clear field error when user starts typing
+  const clearFieldError = (field) => {
+    if (fieldErrors[field]) {
+      setFieldErrors({ ...fieldErrors, [field]: '' });
     }
   };
 
@@ -61,7 +163,7 @@ export default function Login() {
           </h1>
           <p className="text-gray-600 mt-2 font-semibold">Complete. Watch. Earn. Withdraw.</p>
           <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
-            Earn real money by completing simple tasks and watching ads. Convert points to cash (1000 points = ₹10). 
+            Earn real money by completing simple tasks and watching ads. Convert points to cash (100 points = ₹10). 
             Minimum withdrawal ₹100 via UPI/Paytm. Start earning today!
           </p>
         </div>
@@ -72,6 +174,10 @@ export default function Login() {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setError('');
+                setFieldErrors({});
+                setEmail('');
+                setPassword('');
+                setName('');
               }}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
             >
@@ -80,9 +186,19 @@ export default function Login() {
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              <span className="text-sm">{error}</span>
+            <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg flex items-start text-red-700 animate-fade-in">
+              <AlertCircle className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold text-sm mb-1">Authentication Error</p>
+                <p className="text-sm">{error}</p>
+              </div>
+              <button
+                onClick={() => setError('')}
+                className="ml-2 text-red-500 hover:text-red-700 transition-colors"
+                aria-label="Close error"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           )}
 
@@ -93,34 +209,64 @@ export default function Login() {
                   Full Name
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <User className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                    fieldErrors.name ? 'text-red-400' : 'text-gray-400'
+                  }`} />
                   <input
                     type="text"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    placeholder="Enter your name"
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      clearFieldError('name');
+                    }}
+                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                      fieldErrors.name 
+                        ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500' 
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Enter your full name"
                     required={!isLogin}
                   />
                 </div>
+                {fieldErrors.name && (
+                  <p className="mt-1 text-sm text-red-600 flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-1" />
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
             )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
+                Email Address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Mail className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                  fieldErrors.email ? 'text-red-400' : 'text-gray-400'
+                }`} />
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Enter your email"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFieldError('email');
+                  }}
+                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    fieldErrors.email 
+                      ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500' 
+                      : 'border-gray-300'
+                  }`}
+                  placeholder="your.email@example.com"
                   required
                 />
               </div>
+              {fieldErrors.email && (
+                <p className="mt-1 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  {fieldErrors.email}
+                </p>
+              )}
             </div>
 
             <div>
@@ -128,17 +274,38 @@ export default function Login() {
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Lock className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
+                  fieldErrors.password ? 'text-red-400' : 'text-gray-400'
+                }`} />
                 <input
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Enter your password"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFieldError('password');
+                  }}
+                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    fieldErrors.password 
+                      ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500' 
+                      : 'border-gray-300'
+                  }`}
+                  placeholder={isLogin ? "Enter your password" : "At least 6 characters"}
                   required
                   minLength={6}
                 />
               </div>
+              {fieldErrors.password && (
+                <p className="mt-1 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  {fieldErrors.password}
+                </p>
+              )}
+              {!isLogin && !fieldErrors.password && password.length > 0 && password.length < 6 && (
+                <p className="mt-1 text-sm text-gray-500 flex items-center">
+                  <Lock className="w-4 h-4 mr-1" />
+                  Password must be at least 6 characters long
+                </p>
+              )}
             </div>
 
             <button

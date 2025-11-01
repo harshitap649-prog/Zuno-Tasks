@@ -64,9 +64,9 @@ export default function Wallet({ user }) {
   const points = userData.points || 0;
   const totalEarned = userData.totalEarned || 0;
   const totalWithdrawn = userData.totalWithdrawn || 0;
-  const currentBalance = (points / 100).toFixed(2);
-  const totalEarnedRupees = (totalEarned / 100).toFixed(2);
-  const totalWithdrawnRupees = (totalWithdrawn / 100).toFixed(2);
+  const currentBalance = (points / 10).toFixed(2);
+  const totalEarnedRupees = (totalEarned / 10).toFixed(2);
+  const totalWithdrawnRupees = (totalWithdrawn / 10).toFixed(2);
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return 'N/A';
@@ -75,7 +75,7 @@ export default function Wallet({ user }) {
   };
 
   const formatPoints = (points) => {
-    return `₹${(points / 100).toFixed(2)}`;
+    return `₹${(points / 10).toFixed(2)}`;
   };
 
   return (
@@ -126,13 +126,13 @@ export default function Wallet({ user }) {
         <h3 className="text-lg font-semibold text-gray-800 mb-2">💰 Conversion Rate</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div>
-            <span className="font-medium">1000 points</span> = <span className="font-bold text-green-600">₹10</span>
+            <span className="font-medium">100 points</span> = <span className="font-bold text-green-600">₹10</span>
           </div>
           <div>
-            <span className="font-medium">Minimum Withdrawal:</span> <span className="font-bold text-purple-600">₹100 (10,000 points)</span>
+            <span className="font-medium">Minimum Withdrawal:</span> <span className="font-bold text-purple-600">₹100 (1,000 points)</span>
           </div>
           <div>
-            <span className="font-medium">Current Balance:</span> <span className="font-bold text-blue-600">{points >= 10000 ? '✅ Eligible' : '❌ Need ' + (10000 - points) + ' more points'}</span>
+            <span className="font-medium">Current Balance:</span> <span className="font-bold text-blue-600">{points >= 1000 ? '✅ Eligible' : '❌ Need ' + (1000 - points) + ' more points'}</span>
           </div>
         </div>
       </div>

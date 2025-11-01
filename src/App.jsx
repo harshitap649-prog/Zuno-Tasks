@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { onAuthStateChange } from './firebase/auth';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Tasks from './pages/Tasks';
 import Wallet from './pages/Wallet';
 import Withdraw from './pages/Withdraw';
 import HelpSupport from './pages/HelpSupport';
@@ -57,7 +58,7 @@ function App() {
     return (
       <div className="min-h-screen flex flex-col">
         {user && <Navbar user={user} isAdmin={isAdmin} />}
-        <div className="flex-1">
+        <div className="flex-1 pb-20">
           <Routes>
             <Route 
               path="/login" 
@@ -66,6 +67,10 @@ function App() {
             <Route 
               path="/dashboard" 
               element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} 
+            />
+            <Route 
+              path="/tasks" 
+              element={user ? <Tasks user={user} /> : <Navigate to="/login" />} 
             />
             <Route 
               path="/wallet" 
@@ -89,8 +94,9 @@ function App() {
             />
           </Routes>
         </div>
-        {/* Bottom Banner Ad - Always visible on all pages (non-intrusive) */}
-        <div className="border-t border-gray-200 bg-white sticky bottom-0 z-40">
+        
+        {/* Bottom Banner Ad - Always visible on all pages */}
+        <div className="border-t border-gray-200 bg-white fixed bottom-0 left-0 right-0 z-50 shadow-lg">
           <div className="max-w-7xl mx-auto px-2 sm:px-4 py-2">
             <BannerAd className="w-full" />
           </div>
