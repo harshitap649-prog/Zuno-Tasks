@@ -236,8 +236,14 @@ export default function Tasks({ user }) {
                 apiKey={instantNetworkApiKey}
                 userId={user.uid}
                 onComplete={(data) => {
-                  alert(`Task completed! Reward: ${data.reward} points`);
-                  loadTasks();
+                  // Points are already awarded in the component
+                  // Just refresh the task list to show updated points
+                  if (data.success) {
+                    loadTasks();
+                  } else {
+                    alert(`Task completed! Reward: ${data.reward || 0} points`);
+                    loadTasks();
+                  }
                 }}
               />
             </div>
@@ -369,8 +375,14 @@ export default function Tasks({ user }) {
                 apiKey={offertoroApiKey}
                 userId={user.uid}
                 onComplete={(data) => {
-                  alert(`Task completed! Reward: ${data.reward} points`);
-                  loadTasks();
+                  // Points are already awarded in the component
+                  // Just refresh the task list to show updated points
+                  if (data.success) {
+                    loadTasks();
+                  } else {
+                    alert(`Task completed! Reward: ${data.reward || 0} points`);
+                    loadTasks();
+                  }
                 }}
               />
             </div>

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { getOfferwallUrl } from '../utils/offertoro';
+import { updateUserPoints } from '../firebase/firestore';
 
 /**
  * OfferToro Offerwall Component
@@ -8,23 +9,98 @@ import { getOfferwallUrl } from '../utils/offertoro';
 export default function OfferToroOfferwall({ apiKey, userId, onClose, onComplete }) {
   const iframeRef = useRef(null);
   const containerRef = useRef(null);
+  const pointsAwardedRef = useRef(new Set()); // Track awarded offer IDs to prevent duplicates
+  const offerWindowRef = useRef(null);
+  const offerStartTimeRef = useRef(null);
+
+  // Function to award points for completed offer
+  const awardPointsForOffer = useCallback(async (offerId, rewardPoints) => {
+    // Prevent duplicate awards
+    if (pointsAwardedRef.current.has(offerId)) {
+      console.log(`Points already awarded for offer ${offerId}`);
+      return { success: false, error: 'Already awarded' };
+    }
+
+    if (rewardPoints > 0 && userId) {
+      try {
+        console.log(`Awarding ${rewardPoints} points for OfferToro offer completion: ${offerId}`);
+        const result = await updateUserPoints(userId, rewardPoints);
+        
+        if (result.success) {
+          pointsAwardedRef.current.add(offerId);
+          console.log(`✅ Successfully awarded ${rewardPoints} points!`);
+          
+          if (onComplete) {
+            onComplete({
+              offerId: offerId,
+              reward: rewardPoints,
+              userId: userId,
+              success: true,
+            });
+          }
+          
+          alert(`🎉 Success! You earned ${rewardPoints} points!`);
+          return { success: true };
+        } else {
+          console.error('Failed to award points:', result.error);
+          alert(`⚠️ Failed to award points: ${result.error || 'Unknown error'}`);
+          return { success: false, error: result.error };
+        }
+      } catch (error) {
+        console.error('Error awarding points:', error);
+        alert(`⚠️ Error awarding points: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+    } else {
+      console.warn('Invalid reward points or userId:', { rewardPoints, userId });
+      return { success: false, error: 'Invalid reward or userId' };
+    }
+  }, [userId, onComplete]);
 
   useEffect(() => {
     // Listen for messages from iframe (if OfferToro supports postMessage)
-    const handleMessage = (event) => {
+    const handleMessage = async (event) => {
       // Security: Verify origin
-      if (!event.origin.includes('offertoro.com')) {
+      if (!event.origin.includes('offertoro.com') && !event.origin.includes('offertoro')) {
+        console.log('Message from non-OfferToro origin:', event.origin);
         return;
       }
 
-      // Handle completion events
-      if (event.data && event.data.type === 'offer_complete') {
-        if (onComplete) {
-          onComplete({
-            offerId: event.data.offer_id,
-            reward: event.data.reward,
-            userId: userId,
-          });
+      console.log('Received message from OfferToro:', event.origin, event.data);
+
+      // Handle completion events - check various formats
+      if (event.data) {
+        let offerId = null;
+        let rewardPoints = 0;
+        
+        if (typeof event.data === 'object') {
+          offerId = event.data.offer_id || event.data.offerId || event.data.id || `offertoro_${Date.now()}`;
+          rewardPoints = parseInt(
+            event.data.reward || 
+            event.data.amount || 
+            event.data.payout || 
+            event.data.points || 
+            0
+          );
+          
+          // Check for completion events
+          const isComplete = (
+            event.data.type === 'offer_complete' || 
+            event.data.event === 'offer_complete' ||
+            event.data.status === 'complete' ||
+            event.data.completed === true
+          );
+          
+          if (isComplete && rewardPoints > 0) {
+            await awardPointsForOffer(offerId, rewardPoints);
+          }
+        } else if (typeof event.data === 'string') {
+          const lowerData = event.data.toLowerCase();
+          if (lowerData.includes('complete') || lowerData.includes('success')) {
+            console.log('Completion detected but reward amount not found in message');
+            // Try to extract reward or use default
+            // For now, we'll need postback URL or user will need to refresh
+          }
         }
       }
     };
@@ -34,7 +110,7 @@ export default function OfferToroOfferwall({ apiKey, userId, onClose, onComplete
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [userId, onComplete]);
+  }, [userId, onComplete, awardPointsForOffer]);
 
   if (!apiKey || !userId) {
     return (
@@ -68,7 +144,17 @@ export default function OfferToroOfferwall({ apiKey, userId, onClose, onComplete
   }
 
   const handleOpenInNewTab = () => {
-    window.open(offerwallUrl, '_blank', 'noopener,noreferrer');
+    try {
+      const newWindow = window.open(offerwallUrl, '_blank', 'noopener,noreferrer');
+      if (newWindow && !newWindow.closed) {
+        offerWindowRef.current = newWindow;
+        offerStartTimeRef.current = Date.now();
+        console.log('OfferToro offerwall opened in new tab, tracking for completion...');
+      }
+    } catch (error) {
+      console.error('Error opening OfferToro offerwall:', error);
+      window.location.href = offerwallUrl;
+    }
   };
 
   return (

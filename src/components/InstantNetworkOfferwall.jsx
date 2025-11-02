@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { updateUserPoints } from '../firebase/firestore';
 
 /**
  * Instant Network Offerwall Component
@@ -7,10 +8,57 @@ import { useEffect, useRef } from 'react';
 export default function InstantNetworkOfferwall({ network, apiKey, userId, onClose, onComplete }) {
   const iframeRef = useRef(null);
   const containerRef = useRef(null);
+  const pointsAwardedRef = useRef(new Set()); // Track awarded offer IDs to prevent duplicates
+  const offerWindowRef = useRef(null);
+  const offerStartTimeRef = useRef(null);
+
+  // Function to award points for completed offer
+  const awardPointsForOffer = useCallback(async (offerId, rewardPoints) => {
+    // Prevent duplicate awards
+    if (pointsAwardedRef.current.has(offerId)) {
+      console.log(`Points already awarded for offer ${offerId}`);
+      return { success: false, error: 'Already awarded' };
+    }
+
+    if (rewardPoints > 0 && userId) {
+      try {
+        console.log(`Awarding ${rewardPoints} points for ${network} offer completion: ${offerId}`);
+        const result = await updateUserPoints(userId, rewardPoints);
+        
+        if (result.success) {
+          pointsAwardedRef.current.add(offerId);
+          console.log(`✅ Successfully awarded ${rewardPoints} points!`);
+          
+          if (onComplete) {
+            onComplete({
+              offerId: offerId,
+              reward: rewardPoints,
+              userId: userId,
+              success: true,
+            });
+          }
+          
+          alert(`🎉 Success! You earned ${rewardPoints} points!`);
+          return { success: true };
+        } else {
+          console.error('Failed to award points:', result.error);
+          alert(`⚠️ Failed to award points: ${result.error || 'Unknown error'}`);
+          return { success: false, error: result.error };
+        }
+      } catch (error) {
+        console.error('Error awarding points:', error);
+        alert(`⚠️ Error awarding points: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+    } else {
+      console.warn('Invalid reward points or userId:', { rewardPoints, userId });
+      return { success: false, error: 'Invalid reward or userId' };
+    }
+  }, [network, userId, onComplete]);
 
   useEffect(() => {
     // Listen for messages from iframe
-    const handleMessage = (event) => {
+    const handleMessage = async (event) => {
       // Security: Verify origin based on network
       const allowedOrigins = {
         'offerwallme': ['offerwall.me'],
@@ -21,17 +69,43 @@ export default function InstantNetworkOfferwall({ network, apiKey, userId, onClo
 
       const origins = allowedOrigins[network] || [];
       if (!origins.some(origin => event.origin.includes(origin))) {
+        console.log('Message from non-allowed origin:', event.origin);
         return;
       }
 
-      // Handle completion events
-      if (event.data && (event.data.type === 'offer_complete' || event.data.event === 'offer_complete')) {
-        if (onComplete) {
-          onComplete({
-            offerId: event.data.offer_id || event.data.offerId,
-            reward: event.data.reward || event.data.amount,
-            userId: userId,
-          });
+      console.log('Received message from offerwall:', event.origin, event.data);
+
+      // Handle completion events - check various formats
+      if (event.data) {
+        let offerId = null;
+        let rewardPoints = 0;
+        
+        if (typeof event.data === 'object') {
+          offerId = event.data.offer_id || event.data.offerId || event.data.id || `${network}_${Date.now()}`;
+          rewardPoints = parseInt(
+            event.data.reward || 
+            event.data.amount || 
+            event.data.payout || 
+            event.data.points || 
+            0
+          );
+          
+          // Check for completion events
+          const isComplete = (
+            event.data.type === 'offer_complete' || 
+            event.data.event === 'offer_complete' ||
+            event.data.status === 'complete' ||
+            event.data.completed === true
+          );
+          
+          if (isComplete && rewardPoints > 0) {
+            await awardPointsForOffer(offerId, rewardPoints);
+          }
+        } else if (typeof event.data === 'string') {
+          const lowerData = event.data.toLowerCase();
+          if (lowerData.includes('complete') || lowerData.includes('success')) {
+            console.log('Completion detected but reward amount not found in message');
+          }
         }
       }
     };
@@ -41,7 +115,7 @@ export default function InstantNetworkOfferwall({ network, apiKey, userId, onClo
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [network, userId, onComplete]);
+  }, [network, userId, onComplete, awardPointsForOffer]);
 
   if (!apiKey || !userId || !network) {
     return (
@@ -97,6 +171,10 @@ export default function InstantNetworkOfferwall({ network, apiKey, userId, onClo
       const newWindow = window.open(offerwallUrl, '_blank', 'noopener,noreferrer');
       if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
         alert('Please allow popups for this site to open the offerwall. Or copy and open this URL manually:\n\n' + offerwallUrl);
+      } else {
+        offerWindowRef.current = newWindow;
+        offerStartTimeRef.current = Date.now();
+        console.log(`${network} offerwall opened in new tab, tracking for completion...`);
       }
     } catch (error) {
       console.error('Error opening offerwall:', error);
