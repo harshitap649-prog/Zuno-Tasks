@@ -1,7 +1,9 @@
 [build]
   command = "npm install && npm run build"
   publish = "dist"
-  functions = "functions"
+  # Note: functions/ contains Firebase Cloud Functions (not Netlify Functions)
+  # Firebase Functions should be deployed separately to Firebase
+  # functions = "functions"
 
 [build.environment]
   NODE_VERSION = "18"
