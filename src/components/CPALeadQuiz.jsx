@@ -301,7 +301,6 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
             <p className="text-xs text-purple-700 mb-2">
               ✓ Complete offers within quizzes to unlock more earnings.
               <br />✓ Solve one quiz and get <span className="font-bold text-purple-900">10 points</span> automatically!
-              <br />✓ Points are awarded automatically after 13 seconds of opening the quiz!
             </p>
           </div>
         </div>
@@ -325,7 +324,6 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
           <span>Start Quiz</span>
         </button>
         <p className="text-xs text-gray-500 mt-2">Complete quizzes to earn points</p>
-        <p className="text-xs text-blue-600 mt-1 font-semibold">💡 Points are automatically awarded after 13 seconds!</p>
         
         {/* Claim Points Button - Shows immediately after quiz is opened */}
         {showClaimButton && !pointsAwardedRef.current && (
