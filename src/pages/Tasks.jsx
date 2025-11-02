@@ -132,15 +132,6 @@ export default function Tasks({ user }) {
                 <Gift className="w-6 h-6 mr-2 text-purple-600" />
                 CPAlead Quiz - Test Your Knowledge & Earn
               </h2>
-              <div>
-                <p className="text-sm text-purple-700 font-semibold flex items-center mb-1">
-                  <Coins className="w-4 h-4 mr-1 text-purple-600" />
-                  Solve one quiz and get <span className="text-purple-900 font-bold mx-1">10 points</span> automatically!
-                </p>
-                <p className="text-xs text-purple-600 flex items-center">
-                  ⏱️ <span className="font-semibold ml-1">Points are awarded automatically after at least 10 seconds</span> when you complete and close the quiz.
-                </p>
-              </div>
             </div>
             <button
               onClick={() => setShowCPALeadQuiz(!showCPALeadQuiz)}
@@ -242,8 +233,11 @@ export default function Tasks({ user }) {
                 publisherId={cpaleadPublisherId}
                 userId={user.uid}
                 onComplete={(data) => {
-                  alert(`Task completed! Reward: ${data.reward} points`);
-                  loadTasks();
+                  // Points are already awarded in the component
+                  // Just refresh the task list to show updated points
+                  if (data.success) {
+                    loadTasks();
+                  }
                 }}
               />
             </div>
@@ -272,6 +266,13 @@ export default function Tasks({ user }) {
               <CPALeadLinkLocker
                 lockerUrl={cpaleadLinkLockerUrl}
                 userId={user.uid}
+                onComplete={(data) => {
+                  // Points are already awarded in the component
+                  // Just refresh the task list to show updated points
+                  if (data.success) {
+                    loadTasks();
+                  }
+                }}
               />
             </div>
           )}
@@ -299,6 +300,13 @@ export default function Tasks({ user }) {
               <CPALeadFileLocker
                 lockerUrl={cpaleadFileLockerUrl}
                 userId={user.uid}
+                onComplete={(data) => {
+                  // Points are already awarded in the component
+                  // Just refresh the task list to show updated points
+                  if (data.success) {
+                    loadTasks();
+                  }
+                }}
               />
             </div>
           )}

@@ -86,6 +86,9 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
         (typeof event.data === 'string' && event.data.toLowerCase().includes('complete'))
       )) {
         console.log('Quiz completion detected via postMessage');
+        // Show claim button when completion is detected
+        setShowClaimButton(true);
+        // Auto-award points
         await awardPoints('postMessage');
       }
     };
@@ -95,14 +98,19 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
       // If quiz window was opened and user returns, check if enough time passed
       if (quizWindowRef.current && !pointsAwardedRef.current && quizStartTimeRef.current) {
         const timeSinceStart = Date.now() - quizStartTimeRef.current;
-        // Only award if quiz was open for at least 10 seconds (user likely took the quiz)
-        if (timeSinceStart >= 10000) {
+        // Only show claim button and award if quiz was open for at least 15 seconds (user likely completed quiz)
+        if (timeSinceStart >= 15000) {
           setTimeout(async () => {
             if (!pointsAwardedRef.current && quizWindowRef.current) {
-              console.log('User returned from quiz - awarding points automatically');
+              console.log('User returned from quiz - quiz likely completed');
+              setShowClaimButton(true); // Show claim button for completed quiz
               await awardPoints('focus_return');
             }
           }, 1000); // 1 second delay
+        } else {
+          // Quiz wasn't open long enough - don't show claim button
+          console.log('User returned but quiz was open too briefly - quiz likely NOT completed');
+          setShowClaimButton(false);
         }
       }
     };
@@ -120,22 +128,24 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
     const checkQuizWindow = setInterval(() => {
       if (quizWindowRef.current) {
         try {
-          if (quizWindowRef.current.closed) {
+            if (quizWindowRef.current.closed) {
             // Quiz window was closed - check if enough time passed (user likely completed quiz)
             if (!pointsAwardedRef.current && quizStartTimeRef.current) {
               const timeSinceStart = Date.now() - quizStartTimeRef.current;
-              // Only award if quiz was open for at least 10 seconds
-              if (timeSinceStart >= 10000) {
-                console.log('✅ Quiz window closed - awarding points automatically (quiz was open for', Math.round(timeSinceStart/1000), 'seconds)');
+              // Only show claim button and award if quiz was open for at least 15 seconds (indicating completion)
+              if (timeSinceStart >= 15000) {
+                console.log('✅ Quiz window closed - quiz was open for', Math.round(timeSinceStart/1000), 'seconds - quiz likely completed');
+                // Show claim button for manual claim
+                setShowClaimButton(true);
+                // Also try to auto-award
                 awardPoints('window_closed').catch(err => {
                   console.error('❌ Error awarding points on window close:', err);
-                  // Keep claim button visible if auto-award fails
-                  setShowClaimButton(true);
+                  // Claim button already visible for manual claim
                 });
               } else {
-                console.log('⚠️ Quiz window closed too quickly (', Math.round(timeSinceStart/1000), 'seconds) - showing claim button');
-                // Still show claim button if closed quickly (user can claim manually)
-                setShowClaimButton(true);
+                console.log('⚠️ Quiz window closed too quickly (', Math.round(timeSinceStart/1000), 'seconds) - quiz likely NOT completed');
+                // Don't show claim button if closed too quickly - quiz wasn't completed
+                setShowClaimButton(false);
               }
             }
             // Clear window ref but keep claim button visible for manual claim
@@ -149,20 +159,22 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
           // Cross-origin error, window might be closed
           console.log('⚠️ Cannot check window status (likely closed)');
           if (!pointsAwardedRef.current) {
-            // If enough time passed, try to award points
+            // If enough time passed, show claim button and try to award points
             if (quizStartTimeRef.current) {
               const timeSinceStart = Date.now() - quizStartTimeRef.current;
-              if (timeSinceStart >= 10000) {
-                console.log('✅ Window likely closed after 10+ seconds - attempting to award points');
+              if (timeSinceStart >= 15000) {
+                console.log('✅ Window likely closed after 15+ seconds - quiz likely completed');
+                setShowClaimButton(true); // Show claim button for completed quiz
                 awardPoints('window_closed_detected').catch(err => {
                   console.error('❌ Error awarding points:', err);
-                  setShowClaimButton(true); // Show manual claim option
+                  // Claim button already visible for manual claim
                 });
               } else {
-                setShowClaimButton(true); // Show manual claim option
+                console.log('⚠️ Window closed too quickly - quiz likely NOT completed');
+                setShowClaimButton(false); // Don't show claim button for incomplete quiz
               }
             } else {
-              setShowClaimButton(true); // Show manual claim option
+              setShowClaimButton(false); // Don't show if we don't have timing info
             }
             quizWindowRef.current = null;
             quizStartTimeRef.current = null;
@@ -200,7 +212,7 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
     
     // Reset states when opening new quiz
     pointsAwardedRef.current = false;
-    setShowClaimButton(true); // Show claim button immediately
+    setShowClaimButton(false); // Don't show claim button until quiz is completed
     quizStartTimeRef.current = null; // Reset timer
     
     try {
@@ -211,8 +223,7 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
         quizWindowRef.current = newWindow;
         quizStartTimeRef.current = Date.now(); // Track when quiz was opened
         console.log('Quiz window opened, tracking for completion...');
-        // Show claim button immediately for manual claim
-        // Also auto-award when window closes (if enough time passed)
+        // Claim button will show only when quiz is actually completed
       }
     } catch (error) {
       console.error('Error opening quiz:', error);
@@ -234,9 +245,7 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
               Quiz - Test Your Knowledge & Earn
             </p>
             <p className="text-xs text-purple-700 mb-2">
-              ✓ Solve one quiz and get <span className="font-bold text-purple-900">10 points</span> automatically!
-              <br />⏱️ <span className="font-semibold text-purple-900">Points are awarded automatically after at least 10 seconds</span> when you complete and close the quiz.
-              <br />✓ Complete offers within quizzes to unlock more earnings.
+              ✓ Complete offers within quizzes to unlock more earnings.
             </p>
           </div>
         </div>
