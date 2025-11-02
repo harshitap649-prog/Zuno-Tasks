@@ -729,3 +729,41 @@ export const getUserReferralCode = async (uid) => {
   }
 };
 
+// Admin Settings Operations - Store offerwall configs globally
+export const getAdminSettings = async () => {
+  try {
+    const settingsDoc = await getDoc(doc(db, 'adminSettings', 'offerwallConfig'));
+    if (settingsDoc.exists()) {
+      return { success: true, settings: settingsDoc.data() };
+    }
+    // Return default empty settings if document doesn't exist
+    return { success: true, settings: {} };
+  } catch (error) {
+    return { success: false, error: error.message, settings: {} };
+  }
+};
+
+export const updateAdminSettings = async (settings) => {
+  try {
+    await setDoc(doc(db, 'adminSettings', 'offerwallConfig'), {
+      ...settings,
+      updatedAt: serverTimestamp(),
+    }, { merge: true }); // Use merge to update without overwriting other fields
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Subscribe to admin settings changes
+export const subscribeToAdminSettings = (callback) => {
+  const settingsDoc = doc(db, 'adminSettings', 'offerwallConfig');
+  return onSnapshot(settingsDoc, (snapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.data());
+    } else {
+      callback({});
+    }
+  });
+};
+

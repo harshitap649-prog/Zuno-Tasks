@@ -1,24 +1,124 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { updateUserPoints } from '../firebase/firestore';
 
 /**
  * CPAlead File Locker Component
  * Locks files - users must complete offers to download
  */
-export default function CPALeadFileLocker({ lockerUrl, userId, onClose }) {
+export default function CPALeadFileLocker({ lockerUrl, userId, onClose, onComplete }) {
   const containerRef = useRef(null);
+  const pointsAwardedRef = useRef(new Set()); // Track awarded offer IDs to prevent duplicates
+
+  // Function to award points for completed task
+  const awardPointsForTask = useCallback(async (taskId, rewardPoints) => {
+    // Prevent duplicate awards for the same task
+    if (pointsAwardedRef.current.has(taskId)) {
+      console.log(`Points already awarded for task ${taskId}`);
+      return { success: false, error: 'Already awarded' };
+    }
+
+    if (rewardPoints > 0 && userId) {
+      try {
+        console.log(`Awarding ${rewardPoints} points for file locker task completion: ${taskId}`);
+        // Award points immediately
+        const result = await updateUserPoints(userId, rewardPoints);
+        
+        if (result.success) {
+          // Mark as awarded
+          pointsAwardedRef.current.add(taskId);
+          console.log(`✅ Successfully awarded ${rewardPoints} points!`);
+          
+          // Notify parent component
+          if (onComplete) {
+            onComplete({
+              taskId: taskId,
+              reward: rewardPoints,
+              userId: userId,
+              success: true,
+            });
+          }
+          
+          // Show success message
+          alert(`🎉 Success! You earned ${rewardPoints} points!`);
+          return { success: true };
+        } else {
+          console.error('Failed to award points:', result.error);
+          alert(`⚠️ Failed to award points: ${result.error || 'Unknown error'}`);
+          return { success: false, error: result.error };
+        }
+      } catch (error) {
+        console.error('Error awarding points:', error);
+        alert(`⚠️ Error awarding points: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+    } else {
+      console.warn('Invalid reward points or userId:', { rewardPoints, userId });
+      return { success: false, error: 'Invalid reward or userId' };
+    }
+  }, [userId, onComplete]);
 
   useEffect(() => {
     // Listen for completion events
-    const handleMessage = (event) => {
-      if (!event.origin.includes('akamaicdn.org') && !event.origin.includes('zwidgetymz56r.xyz')) {
+    const handleMessage = async (event) => {
+      // Log all messages for debugging
+      console.log('Received message from file locker:', event.origin, event.data);
+
+      // Security: Verify origin (allow CPAlead domains)
+      if (!event.origin.includes('akamaicdn.org') && 
+          !event.origin.includes('zwidgetymz56r.xyz') &&
+          !event.origin.includes('directcpi.com') &&
+          !event.origin.includes('cpalead.com')) {
         return;
       }
 
-      if (event.data && (
-        event.data.type === 'offer_complete' || 
-        event.data.event === 'offer_complete'
-      )) {
-        console.log('File unlocked!');
+      // Handle completion events - check various formats
+      if (event.data) {
+        let taskId = null;
+        let rewardPoints = 0;
+        
+        // Try different data formats
+        if (typeof event.data === 'object') {
+          taskId = event.data.task_id || event.data.taskId || event.data.offer_id || event.data.offerId || event.data.id || null;
+          rewardPoints = parseInt(
+            event.data.reward || 
+            event.data.amount || 
+            event.data.payout || 
+            event.data.points || 
+            0
+          );
+          
+          // Check for completion events
+          const isComplete = (
+            event.data.type === 'offer_complete' || 
+            event.data.event === 'offer_complete' ||
+            event.data.type === 'task_complete' ||
+            event.data.status === 'complete' ||
+            event.data.completed === true ||
+            event.data.unlocked === true ||
+            event.data.downloaded === true
+          );
+          
+          if (isComplete && rewardPoints > 0) {
+            await awardPointsForTask(taskId || `file_locker_${Date.now()}`, rewardPoints);
+          } else if (isComplete && rewardPoints === 0) {
+            // If completion detected but no reward specified, use default reward
+            console.log('Task completed but reward not specified, using default reward');
+            await awardPointsForTask(taskId || `file_locker_${Date.now()}`, 10); // Default 10 points
+          }
+        } else if (typeof event.data === 'string') {
+          // Check if message contains completion info
+          const lowerData = event.data.toLowerCase();
+          if (lowerData.includes('complete') || lowerData.includes('success') || lowerData.includes('unlock') || lowerData.includes('download')) {
+            // Try to extract reward or use default
+            const match = event.data.match(/(\d+)\s*points?/i);
+            if (match) {
+              rewardPoints = parseInt(match[1]);
+            } else {
+              rewardPoints = 10; // Default reward
+            }
+            await awardPointsForTask(`file_locker_${Date.now()}`, rewardPoints);
+          }
+        }
       }
     };
 
@@ -27,7 +127,7 @@ export default function CPALeadFileLocker({ lockerUrl, userId, onClose }) {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, []);
+  }, [awardPointsForTask]);
 
   if (!lockerUrl) {
     return (
@@ -71,7 +171,7 @@ export default function CPALeadFileLocker({ lockerUrl, userId, onClose }) {
             </p>
             <p className="text-xs text-green-700 mb-2">
               ✓ Complete offers to unlock file downloads.
-              <br />✓ Download premium files after completing offers.
+              <br />✓ Points are awarded immediately when you complete an offer!
             </p>
           </div>
         </div>

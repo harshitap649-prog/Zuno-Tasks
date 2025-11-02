@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { getUserData, getActiveOffers, updateWatchCount, subscribeToOffers, getUserReferralCode } from '../firebase/firestore';
 import { Coins, PlayCircle, Gift, TrendingUp, Copy, Check } from 'lucide-react';
 import WatchAdModal from '../components/WatchAdModal';
-import SidebarAd from '../components/SidebarAd';
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
@@ -185,14 +184,11 @@ export default function Dashboard({ user }) {
   const rupees = (points / 10).toFixed(2);
   const canWatchAd = userData.watchCount < 3;
 
-  const adsenseClient = import.meta.env.VITE_ADSENSE_CLIENT;
-  const inlineSlot = import.meta.env.VITE_ADSENSE_INLINE_SLOT;
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div>
         {/* Main Content */}
-        <div className="lg:col-span-9">
+        <div>
       {/* Header Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
@@ -352,18 +348,6 @@ export default function Dashboard({ user }) {
             />
           )}
         </div>
-
-        {/* Sidebar Ad - Desktop only, non-intrusive */}
-        <div className="hidden lg:block lg:col-span-3">
-          <div className="sticky top-20">
-            <SidebarAd />
-          </div>
-        </div>
-      </div>
-
-      {/* Inline Ad - Service worker will inject automatically */}
-      <div className="mt-8 mb-4" data-ad-zone="inline">
-        {/* Service worker will inject inline ads here automatically */}
       </div>
     </div>
   );

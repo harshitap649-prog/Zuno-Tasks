@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { updateUserPoints } from '../firebase/firestore';
 
 /**
  * CPAlead Offerwall Component
@@ -7,27 +8,107 @@ import { useEffect, useRef } from 'react';
 export default function CPALeadOfferwall({ publisherId, userId, onClose, onComplete }) {
   const iframeRef = useRef(null);
   const containerRef = useRef(null);
+  const pointsAwardedRef = useRef(new Set()); // Track awarded offer IDs to prevent duplicates
+  const offerWindowRef = useRef(null);
+  const offerStartTimeRef = useRef(null);
+
+  // Function to award points for an offer
+  const awardPointsForOffer = useCallback(async (offerId, rewardPoints) => {
+    // Prevent duplicate awards for the same offer
+    if (pointsAwardedRef.current.has(offerId)) {
+      console.log(`Points already awarded for offer ${offerId}`);
+      return { success: false, error: 'Already awarded' };
+    }
+
+    if (rewardPoints > 0 && userId) {
+      try {
+        console.log(`Awarding ${rewardPoints} points for offer completion: ${offerId}`);
+        // Award points immediately
+        const result = await updateUserPoints(userId, rewardPoints);
+        
+        if (result.success) {
+          // Mark as awarded
+          pointsAwardedRef.current.add(offerId);
+          console.log(`✅ Successfully awarded ${rewardPoints} points!`);
+          
+          // Notify parent component
+          if (onComplete) {
+            onComplete({
+              offerId: offerId,
+              reward: rewardPoints,
+              userId: userId,
+              success: true,
+            });
+          }
+          
+          // Show success message
+          alert(`🎉 Success! You earned ${rewardPoints} points!`);
+          return { success: true };
+        } else {
+          console.error('Failed to award points:', result.error);
+          alert(`⚠️ Failed to award points: ${result.error || 'Unknown error'}`);
+          return { success: false, error: result.error };
+        }
+      } catch (error) {
+        console.error('Error awarding points:', error);
+        alert(`⚠️ Error awarding points: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+    } else {
+      console.warn('Invalid reward points or userId:', { rewardPoints, userId });
+      return { success: false, error: 'Invalid reward or userId' };
+    }
+  }, [userId, onComplete]);
 
   useEffect(() => {
     // Listen for messages from iframe
-    const handleMessage = (event) => {
-      // Security: Verify origin
-      if (!event.origin.includes('cpalead.com')) {
+    const handleMessage = async (event) => {
+      // Log all messages for debugging
+      console.log('Received message from offerwall:', event.origin, event.data);
+
+      // Security: Verify origin (allow CPAlead domains)
+      if (!event.origin.includes('cpalead.com') && 
+          !event.origin.includes('directcpi.com') &&
+          !event.origin.includes('zwidget')) {
         return;
       }
 
-      // Handle completion events from CPAlead
-      if (event.data && (
-        event.data.type === 'offer_complete' || 
-        event.data.event === 'offer_complete' ||
-        event.data.type === 'cpalead_complete'
-      )) {
-        if (onComplete) {
-          onComplete({
-            offerId: event.data.offer_id || event.data.offerId,
-            reward: event.data.reward || event.data.amount || event.data.payout,
-            userId: userId,
-          });
+      // Handle completion events from CPAlead - check various formats
+      if (event.data) {
+        let offerId = null;
+        let rewardPoints = 0;
+        
+        // Try different data formats
+        if (typeof event.data === 'object') {
+          offerId = event.data.offer_id || event.data.offerId || event.data.id || null;
+          rewardPoints = parseInt(
+            event.data.reward || 
+            event.data.amount || 
+            event.data.payout || 
+            event.data.points || 
+            0
+          );
+          
+          // Check for completion events
+          const isComplete = (
+            event.data.type === 'offer_complete' || 
+            event.data.event === 'offer_complete' ||
+            event.data.type === 'cpalead_complete' ||
+            event.data.status === 'complete' ||
+            event.data.completed === true
+          );
+          
+          if (isComplete && rewardPoints > 0) {
+            await awardPointsForOffer(offerId || `offer_${Date.now()}`, rewardPoints);
+          }
+        } else if (typeof event.data === 'string') {
+          // Check if message contains completion info
+          const lowerData = event.data.toLowerCase();
+          if (lowerData.includes('complete') || lowerData.includes('success')) {
+            // Try to extract reward from URL params or other sources
+            // For now, we'll need user to manually specify or use postback
+            console.log('Completion detected but reward amount not found in message');
+          }
         }
       }
     };
@@ -37,7 +118,7 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [userId, onComplete]);
+  }, [userId, onComplete, awardPointsForOffer]);
 
   if (!publisherId || !userId) {
     return (
@@ -84,6 +165,10 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
       const newWindow = window.open(offerwallUrl, '_blank', 'noopener,noreferrer');
       if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
         alert('Please allow popups for this site to open the offerwall. Or copy and open this URL manually:\n\n' + offerwallUrl);
+      } else {
+        // Track the offerwall window
+        offerWindowRef.current = newWindow;
+        offerStartTimeRef.current = Date.now();
       }
     } catch (error) {
       console.error('Error opening CPAlead offerwall:', error);
@@ -91,6 +176,10 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
       window.location.href = offerwallUrl;
     }
   };
+
+  // Note: CPAlead typically uses postback URLs or postMessage for completion
+  // If postMessage isn't working, you may need to configure CPAlead postback URL
+  // pointing to your server/function that calls updateUserPoints
 
   return (
     <div ref={containerRef} className="w-full h-full">
@@ -104,7 +193,7 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
             </p>
             <p className="text-xs text-purple-700 mb-2">
               ✓ Complete offers to earn rewards on your account.
-              <br />✓ After completing offers, refresh this page to see your updated points.
+              <br />✓ Points are awarded immediately when you complete an offer!
             </p>
           </div>
         </div>

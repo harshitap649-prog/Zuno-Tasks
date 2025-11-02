@@ -9,7 +9,9 @@ import {
   banUser,
   adjustUserPoints,
   getAllSupportMessages,
-  updateSupportMessageStatus
+  updateSupportMessageStatus,
+  getAdminSettings,
+  updateAdminSettings
 } from '../firebase/firestore';
 import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare } from 'lucide-react';
 
@@ -459,25 +461,51 @@ function OffersTab({ offers, onReload }) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    // Load OfferToro API key from localStorage or env
-    const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
-    setOffertoroApiKey(savedKey);
+    // Load settings from Firestore (primary source)
+    // Also check localStorage as fallback for backward compatibility
+    const loadSettings = async () => {
+      const settingsResult = await getAdminSettings();
+      if (settingsResult.success && settingsResult.settings) {
+        const settings = settingsResult.settings;
+        // Load from Firestore
+        setOffertoroApiKey(settings.offertoroApiKey || '');
+        setInstantNetwork(settings.instantNetwork || '');
+        setInstantNetworkApiKey(settings.instantNetworkApiKey || '');
+        setCPALeadPublisherId(settings.cpaleadPublisherId || '');
+        setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
+        setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
+        setCPALeadQuizUrl(settings.cpaleadQuizUrl || '');
+        
+        // Also sync to localStorage for backward compatibility
+        if (settings.offertoroApiKey) localStorage.setItem('offertoro_api_key', settings.offertoroApiKey);
+        if (settings.instantNetwork) localStorage.setItem('instant_network', settings.instantNetwork);
+        if (settings.instantNetworkApiKey) localStorage.setItem('instant_network_api_key', settings.instantNetworkApiKey);
+        if (settings.cpaleadPublisherId) localStorage.setItem('cpalead_publisher_id', settings.cpaleadPublisherId);
+        if (settings.cpaleadLinkLockerUrl) localStorage.setItem('cpalead_link_locker_url', settings.cpaleadLinkLockerUrl);
+        if (settings.cpaleadFileLockerUrl) localStorage.setItem('cpalead_file_locker_url', settings.cpaleadFileLockerUrl);
+        if (settings.cpaleadQuizUrl) localStorage.setItem('cpalead_quiz_url', settings.cpaleadQuizUrl);
+      } else {
+        // Fallback to localStorage if Firestore doesn't have settings
+        const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
+        setOffertoroApiKey(savedKey);
+        
+        const savedNetwork = localStorage.getItem('instant_network') || '';
+        const savedNetworkKey = localStorage.getItem('instant_network_api_key') || '';
+        setInstantNetwork(savedNetwork);
+        setInstantNetworkApiKey(savedNetworkKey);
+        
+        const savedCPALeadId = localStorage.getItem('cpalead_publisher_id') || '';
+        const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
+        const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
+        const savedQuiz = localStorage.getItem('cpalead_quiz_url') || '';
+        setCPALeadPublisherId(savedCPALeadId);
+        setCPALeadLinkLockerUrl(savedLinkLocker);
+        setCPALeadFileLockerUrl(savedFileLocker);
+        setCPALeadQuizUrl(savedQuiz);
+      }
+    };
     
-    // Load instant network config
-    const savedNetwork = localStorage.getItem('instant_network') || '';
-    const savedNetworkKey = localStorage.getItem('instant_network_api_key') || '';
-    setInstantNetwork(savedNetwork);
-    setInstantNetworkApiKey(savedNetworkKey);
-    
-    // Load CPAlead config
-    const savedCPALeadId = localStorage.getItem('cpalead_publisher_id') || '';
-    const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
-    const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
-    const savedQuiz = localStorage.getItem('cpalead_quiz_url') || '';
-    setCPALeadPublisherId(savedCPALeadId);
-    setCPALeadLinkLockerUrl(savedLinkLocker);
-    setCPALeadFileLockerUrl(savedFileLocker);
-    setCPALeadQuizUrl(savedQuiz);
+    loadSettings();
   }, []);
 
   const handleSubmit = async (e) => {
@@ -510,12 +538,16 @@ function OffersTab({ offers, onReload }) {
 
     setSyncing(true);
     try {
-      // Save API key to localStorage
+      // Save API key to Firestore (primary) and localStorage (backup)
+      const result = await updateAdminSettings({ offertoroApiKey });
       localStorage.setItem('offertoro_api_key', offertoroApiKey);
 
-      // Note: OfferToro primarily uses iframe embed, so we'll enable it
-      // If you have API access, you can fetch offers here
-      alert('OfferToro offerwall is ready! Users can now see offers when they visit the Tasks page.\n\nNote: For full integration, configure postback URL in your OfferToro dashboard.');
+      if (result.success) {
+        alert('✅ OfferToro offerwall is ready! All users can now see offers when they visit the Tasks page.\n\nNote: For full integration, configure postback URL in your OfferToro dashboard.');
+      } else {
+        // Fallback: still save to localStorage if Firestore fails
+        alert('⚠️ Saved to local storage. Some users may not see offers. Error: ' + result.error);
+      }
       
       // Optionally, you can try to fetch via API if available
       // const { fetchOffersFromAPI, formatOfferToroOffer } = await import('../utils/offertoro');
@@ -676,11 +708,20 @@ function OffersTab({ offers, onReload }) {
                     return;
                   }
                   
-                  // Save configuration
+                  // Save configuration to Firestore (primary) and localStorage (backup)
+                  const result = await updateAdminSettings({
+                    instantNetwork,
+                    instantNetworkApiKey,
+                  });
+                  
                   localStorage.setItem('instant_network', instantNetwork);
                   localStorage.setItem('instant_network_api_key', instantNetworkApiKey);
                   
-                  alert(`✅ ${instantNetwork} configured successfully!\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see the offerwall from ${instantNetwork}\n3. Offers will appear automatically\n\n💡 Tip: Check your network dashboard for available offers!`);
+                  if (result.success) {
+                    alert(`✅ ${instantNetwork} configured successfully! All users can now see offers.\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see the offerwall from ${instantNetwork}\n3. Offers will appear automatically\n\n💡 Tip: Check your network dashboard for available offers!`);
+                  } else {
+                    alert(`⚠️ Saved locally. Some users may not see offers. Error: ${result.error}`);
+                  }
                   
                   setShowInstantNetworkConfig(false);
                   onReload();
@@ -788,13 +829,29 @@ function OffersTab({ offers, onReload }) {
             
             <div className="flex gap-3">
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!cpaleadPublisherId) {
                     alert('Please enter your CPAlead Offerwall Direct Link URL');
                     return;
                   }
                   
-                  // Save all configurations
+                  // Save all configurations to Firestore (primary) and localStorage (backup)
+                  const settingsToSave = {
+                    cpaleadPublisherId,
+                  };
+                  if (cpaleadLinkLockerUrl) {
+                    settingsToSave.cpaleadLinkLockerUrl = cpaleadLinkLockerUrl;
+                  }
+                  if (cpaleadFileLockerUrl) {
+                    settingsToSave.cpaleadFileLockerUrl = cpaleadFileLockerUrl;
+                  }
+                  if (cpaleadQuizUrl) {
+                    settingsToSave.cpaleadQuizUrl = cpaleadQuizUrl;
+                  }
+                  
+                  const result = await updateAdminSettings(settingsToSave);
+                  
+                  // Also save to localStorage for backward compatibility
                   localStorage.setItem('cpalead_publisher_id', cpaleadPublisherId);
                   if (cpaleadLinkLockerUrl) {
                     localStorage.setItem('cpalead_link_locker_url', cpaleadLinkLockerUrl);
@@ -806,10 +863,14 @@ function OffersTab({ offers, onReload }) {
                     localStorage.setItem('cpalead_quiz_url', cpaleadQuizUrl);
                   }
                   
-                  let message = `✅ CPAlead tools configured successfully!\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see all configured CPAlead tools\n3. Users complete offers → You earn money!\n\n🎯 Remember: You need to earn $50 in 8 days!`;
+                  let message = `✅ CPAlead tools configured successfully! All users can now see offers.\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see all configured CPAlead tools\n3. Users complete offers → You earn money!\n\n🎯 Remember: You need to earn $50 in 8 days!`;
                   if (cpaleadLinkLockerUrl) message += '\n\n✅ Link Locker added';
                   if (cpaleadFileLockerUrl) message += '\n\n✅ File Locker added';
                   if (cpaleadQuizUrl) message += '\n\n✅ Quiz added';
+                  
+                  if (!result.success) {
+                    message = `⚠️ Saved locally. Some users may not see offers. Error: ${result.error}\n\n${message}`;
+                  }
                   
                   alert(message);
                   

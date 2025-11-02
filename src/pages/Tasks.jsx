@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getActiveOffers, getUserOngoingTasks, startTask } from '../firebase/firestore';
+import { getActiveOffers, getUserOngoingTasks, startTask, getAdminSettings, subscribeToAdminSettings } from '../firebase/firestore';
 import { Coins, Gift, Clock, ArrowLeft, ExternalLink } from 'lucide-react';
 import OfferToroOfferwall from '../components/OfferToroOfferwall';
 import InstantNetworkOfferwall from '../components/InstantNetworkOfferwall';
@@ -30,25 +30,59 @@ export default function Tasks({ user }) {
 
   useEffect(() => {
     loadTasks();
-    // Load OfferToro API key
-    const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
-    setOffertoroApiKey(savedKey);
     
-    // Load instant network config
-    const savedNetwork = localStorage.getItem('instant_network') || '';
-    const savedNetworkKey = localStorage.getItem('instant_network_api_key') || '';
-    setInstantNetwork(savedNetwork);
-    setInstantNetworkApiKey(savedNetworkKey);
+    // Load settings from Firestore (primary source) with localStorage fallback
+    const loadSettings = async () => {
+      const settingsResult = await getAdminSettings();
+      if (settingsResult.success && settingsResult.settings) {
+        const settings = settingsResult.settings;
+        // Load from Firestore - these are global settings available to all users
+        setOffertoroApiKey(settings.offertoroApiKey || '');
+        setInstantNetwork(settings.instantNetwork || '');
+        setInstantNetworkApiKey(settings.instantNetworkApiKey || '');
+        setCPALeadPublisherId(settings.cpaleadPublisherId || '');
+        setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
+        setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
+        setCPALeadQuizUrl(settings.cpaleadQuizUrl || '');
+      } else {
+        // Fallback to localStorage if Firestore doesn't have settings
+        const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
+        setOffertoroApiKey(savedKey);
+        
+        const savedNetwork = localStorage.getItem('instant_network') || '';
+        const savedNetworkKey = localStorage.getItem('instant_network_api_key') || '';
+        setInstantNetwork(savedNetwork);
+        setInstantNetworkApiKey(savedNetworkKey);
+        
+        const savedCPALeadId = localStorage.getItem('cpalead_publisher_id') || '';
+        const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
+        const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
+        const savedQuiz = localStorage.getItem('cpalead_quiz_url') || '';
+        setCPALeadPublisherId(savedCPALeadId);
+        setCPALeadLinkLockerUrl(savedLinkLocker);
+        setCPALeadFileLockerUrl(savedFileLocker);
+        setCPALeadQuizUrl(savedQuiz);
+      }
+    };
     
-    // Load CPAlead config
-    const savedCPALeadId = localStorage.getItem('cpalead_publisher_id') || '';
-    const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
-    const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
-    const savedQuiz = localStorage.getItem('cpalead_quiz_url') || '';
-    setCPALeadPublisherId(savedCPALeadId);
-    setCPALeadLinkLockerUrl(savedLinkLocker);
-    setCPALeadFileLockerUrl(savedFileLocker);
-    setCPALeadQuizUrl(savedQuiz);
+    loadSettings();
+    
+    // Subscribe to real-time updates so all users see changes immediately
+    const unsubscribe = subscribeToAdminSettings((settings) => {
+      if (settings) {
+        setOffertoroApiKey(settings.offertoroApiKey || '');
+        setInstantNetwork(settings.instantNetwork || '');
+        setInstantNetworkApiKey(settings.instantNetworkApiKey || '');
+        setCPALeadPublisherId(settings.cpaleadPublisherId || '');
+        setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
+        setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
+        setCPALeadQuizUrl(settings.cpaleadQuizUrl || '');
+      }
+    });
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user]);
 
   const loadTasks = async () => {
