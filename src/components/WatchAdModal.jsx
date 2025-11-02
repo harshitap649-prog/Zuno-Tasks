@@ -5,8 +5,7 @@ export default function WatchAdModal({ onClose, onComplete }) {
   const [countdown, setCountdown] = useState(3);
   const [watching, setWatching] = useState(false);
   const [adLoaded, setAdLoaded] = useState(false); // Track if ad is actually visible/loaded
-  const [adTimeRemaining, setAdTimeRemaining] = useState(30); // 30 seconds to watch ad
-  const [adTriggered, setAdTriggered] = useState(false);
+  const [adWatchTime, setAdWatchTime] = useState(0); // Track how long user watched (20 seconds needed)
   const adCompletedRef = useRef(false);
   const countdownTimerRef = useRef(null);
   const popunderScriptLoadedRef = useRef(false);
@@ -26,28 +25,67 @@ export default function WatchAdModal({ onClose, onComplete }) {
     }
   }, []);
 
-  // Countdown before ad starts
+  // Countdown before ad starts - then trigger popunder directly
   useEffect(() => {
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     } else {
+      // Countdown ended - trigger popunder ad immediately
       setWatching(true);
-      setAdTimeRemaining(30);
-      setAdTriggered(true); // Set triggered immediately so ad container shows
+      setAdWatchTime(0);
       
-      // Start timer immediately - Popunder should have opened already (loaded on modal open)
-      // Small delay to ensure popunder has time to trigger
+      // CRITICAL: Trigger popunder immediately after countdown
+      // The script should already be loaded from Dashboard click, but we need to ensure it triggers
+      const existingScript = document.querySelector('script[data-adsterra-popunder]');
+      
+      if (!existingScript) {
+        // Load script if not already loaded
+        loadAdsterraPopunderAd();
+      } else {
+        // Script exists - need to trigger popunder
+        // Adsterra popunders need user interaction, so we simulate it by reloading script or triggering
+        console.log('✅ Script found, attempting to trigger popunder...');
+        
+        // Try multiple methods to trigger popunder
+        window.focus();
+        
+        // Create a temporary click event to trigger popunder (required for some ad networks)
+        try {
+          const clickEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+          });
+          document.body.dispatchEvent(clickEvent);
+        } catch (e) {
+          console.log('Could not dispatch click event:', e);
+        }
+        
+        // Try reloading script as fallback
+        setTimeout(() => {
+          const scriptClone = existingScript.cloneNode(true);
+          existingScript.parentNode?.replaceChild(scriptClone, existingScript);
+        }, 100);
+      }
+      
+      // Start watching timer immediately (popunder should open in background)
       setTimeout(() => {
         setAdLoaded(true);
-        console.log('⏱️ Starting 30-second timer for Popunder ad');
-      }, 500);
+        console.log('⏱️ Starting 20-second watch timer');
+      }, 300);
     }
   }, [countdown]);
 
-  // Ad watching timer - ONLY START when ad is actually loaded/visible
+  // Store onComplete in ref to avoid dependency issues
+  const onCompleteRef = useRef(onComplete);
   useEffect(() => {
-    // Only start countdown if ad is loaded and watching
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  // Ad watching timer - Track time watched (need 20 seconds)
+  useEffect(() => {
+    // Only start timer if ad is loaded and watching
     if (!watching || !adLoaded || adCompletedRef.current) {
       // Clear timer if conditions not met
       if (countdownTimerRef.current) {
@@ -57,24 +95,42 @@ export default function WatchAdModal({ onClose, onComplete }) {
       return;
     }
 
-    // Start the countdown timer only when ad is loaded
+    console.log('✅ Starting watch timer - will award points at 20 seconds');
+
+    // Start the watch timer - count up to 20 seconds
     countdownTimerRef.current = setInterval(() => {
-      setAdTimeRemaining((prev) => {
-        if (prev <= 1) {
-          // Ad completed - award points
-          if (!adCompletedRef.current) {
-            adCompletedRef.current = true;
-            setWatching(false);
-            setAdLoaded(false);
-            if (countdownTimerRef.current) {
-              clearInterval(countdownTimerRef.current);
-              countdownTimerRef.current = null;
-            }
-            onComplete();
+      setAdWatchTime((prev) => {
+        const newTime = prev + 1;
+        console.log(`⏱️ Watch time: ${newTime}/20 seconds`);
+        
+        // If user watched for 20 or more seconds, award points
+        if (newTime >= 20 && !adCompletedRef.current) {
+          console.log('🎉 20+ seconds reached! Awarding points...');
+          adCompletedRef.current = true;
+          
+          // Clear timer first
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
           }
-          return 0;
+          
+          // Update state
+          setWatching(false);
+          setAdLoaded(false);
+          
+          // Award points immediately using ref to ensure latest callback
+          try {
+            console.log('✅ Calling onComplete callback...');
+            onCompleteRef.current();
+            console.log('✅ onComplete callback executed');
+          } catch (error) {
+            console.error('❌ Error in onComplete callback:', error);
+            alert('⚠️ Error awarding points. Please try again.');
+          }
+          
+          return 20; // Cap at 20
         }
-        return prev - 1;
+        return newTime;
       });
     }, 1000);
 
@@ -84,7 +140,7 @@ export default function WatchAdModal({ onClose, onComplete }) {
         countdownTimerRef.current = null;
       }
     };
-  }, [watching, adLoaded, onComplete]);
+  }, [watching, adLoaded]);
 
 
   const loadAdsterraPopunderAd = () => {
@@ -146,38 +202,26 @@ export default function WatchAdModal({ onClose, onComplete }) {
               {countdown}
             </div>
             <p className="text-gray-600">Preparing ad...</p>
+            <p className="text-xs text-gray-500 mt-3">⏱️ Watch ad more than 20 seconds to earn 10 points</p>
           </div>
         ) : watching ? (
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Watch Ad to Earn Points</h3>
+            <p className="text-xs text-gray-600 mb-4 text-center">⏱️ Watch ad more than 20 seconds to earn 10 points</p>
             
-            {/* Timer and Progress Display - Only show when ad is loaded */}
+            {/* Simplified Progress Display - No countdown timer, just progress */}
             {adLoaded && (
               <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 mb-4 border-2 border-purple-300">
-                <div className="flex items-center justify-center mb-4">
-                  <Clock className="w-6 h-6 text-purple-600 mr-2" />
-                  <span className="text-lg font-semibold text-gray-700">Time Remaining:</span>
-                  <span className="text-3xl font-bold text-purple-600 ml-3">{adTimeRemaining}s</span>
-                </div>
-                
-                {/* Progress Bar */}
-                <div className="w-full bg-gray-200 rounded-full h-4 mb-4 overflow-hidden">
+                {/* Progress Bar - Main Display */}
+                <div className="w-full bg-gray-200 rounded-full h-6 overflow-hidden relative">
                   <div
-                    className="bg-gradient-to-r from-purple-500 to-blue-500 h-full rounded-full transition-all duration-1000 ease-linear flex items-center justify-end pr-2"
-                    style={{ width: `${(adTimeRemaining / 30) * 100}%` }}
+                    className="bg-gradient-to-r from-purple-500 to-blue-500 h-full rounded-full transition-all duration-1000 ease-linear flex items-center justify-center"
+                    style={{ width: `${Math.min((adWatchTime / 20) * 100, 100)}%` }}
                   >
-                    {adTimeRemaining > 0 && (
-                      <span className="text-xs font-bold text-white">{Math.round((adTimeRemaining / 30) * 100)}%</span>
-                    )}
+                    <span className="text-sm font-bold text-white">
+                      {adWatchTime < 20 ? `${adWatchTime}/20 seconds` : 'Complete!'}
+                    </span>
                   </div>
-                </div>
-
-                {/* Points Info */}
-                <div className="flex items-center justify-center bg-white rounded-lg p-3">
-                  <Gift className="w-5 h-5 text-green-600 mr-2" />
-                  <span className="text-sm font-medium text-gray-700">
-                    You will earn <span className="font-bold text-green-600">10 points</span> when the timer ends!
-                  </span>
                 </div>
               </div>
             )}
@@ -187,39 +231,39 @@ export default function WatchAdModal({ onClose, onComplete }) {
               {/* Adsterra Popunder Ad Container */}
               <div id="real-ad-container" className="w-full mb-4" style={{ minHeight: '400px', position: 'relative' }}>
                 {adLoaded ? (
-                  <>
+                  <div>
                     {/* Adsterra Popunder Ad - Opens in new tab/window */}
                     <div className="w-full" style={{ minHeight: '350px' }}>
                       {/* Popunder ad has opened in background - timer is running */}
                     </div>
                     
-                    {/* Timer and Status Overlay */}
+                    {/* Simplified Status Overlay - No timer countdown */}
                     <div className="absolute bottom-4 left-0 right-0 z-10">
                       <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg p-3 mx-auto max-w-md shadow-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-semibold">⏱️ Time Remaining:</span>
-                          <span className="text-xl font-bold">{adTimeRemaining}s</span>
-                      </div>
-                        <div className="w-full bg-white bg-opacity-30 rounded-full h-2">
+                        <div className="w-full bg-white bg-opacity-30 rounded-full h-3 mb-2">
                           <div
-                            className="bg-yellow-300 h-2 rounded-full transition-all duration-1000"
-                            style={{ width: `${(adTimeRemaining / 30) * 100}%` }}
+                            className="bg-yellow-300 h-3 rounded-full transition-all duration-1000"
+                            style={{ width: `${Math.min((adWatchTime / 20) * 100, 100)}%` }}
                           ></div>
+                        </div>
+                        <p className="text-xs text-center opacity-90">
+                          {adWatchTime < 20 ? (
+                            <span>Watch more than <strong>20 seconds</strong> to earn <strong>10 points</strong></span>
+                          ) : (
+                            <span>✅ Complete! You've earned <strong>10 points</strong>!</span>
+                          )}
+                        </p>
+                      </div>
                     </div>
-                        <p className="text-xs mt-2 opacity-90">
-                          Watch the ad completely to earn <strong>10 points</strong>
-                      </p>
-                    </div>
-                  </div>
                     
                     {/* Background Placeholder */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gradient-to-br from-blue-900 via-purple-900 to-pink-900 rounded-xl overflow-hidden" style={{ zIndex: 0 }}>
                       <div className="text-6xl mb-4 animate-bounce">📺</div>
                       <h2 className="text-2xl font-bold mb-2">Adsterra Popunder Ad</h2>
                       <p className="text-sm opacity-75 mb-2">Ad opened in new tab/window</p>
-                      <p className="text-xs opacity-60">Please wait for the timer to complete</p>
+                      <p className="text-xs opacity-60">Watch for 20 seconds to earn points</p>
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full">
                     <div className="mb-6">
@@ -238,8 +282,9 @@ export default function WatchAdModal({ onClose, onComplete }) {
             {adLoaded ? (
               <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
                 <p className="text-xs text-green-800 text-center">
-                  ⏱️ <strong>Popunder Ad Active:</strong> The 30-second countdown has started! The ad opened in a new tab/window. Wait for the timer to complete. You will earn <strong>10 points</strong> when the timer reaches 0. 
-                  {adTimeRemaining > 0 && ` Time remaining: ${adTimeRemaining} seconds.`}
+                  ⏱️ <strong>Popunder Ad Active:</strong> The ad opened in a new tab/window. Watch for more than <strong>20 seconds</strong> to earn <strong>10 points</strong>. 
+                  {adWatchTime < 20 && ` Current: ${adWatchTime}/20 seconds.`}
+                  {adWatchTime >= 20 && ` ✅ You've completed the requirement!`}
                 </p>
               </div>
             ) : (

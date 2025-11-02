@@ -123,6 +123,48 @@ export default function Tasks({ user }) {
         </div>
       </div>
 
+      {/* CPAlead Quiz Section - MOVED TO TOP */}
+      {cpaleadQuizUrl && (
+        <div className="card mb-8 border-2 border-purple-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
+                <Gift className="w-6 h-6 mr-2 text-purple-600" />
+                CPAlead Quiz - Test Your Knowledge & Earn
+              </h2>
+              <div>
+                <p className="text-sm text-purple-700 font-semibold flex items-center mb-1">
+                  <Coins className="w-4 h-4 mr-1 text-purple-600" />
+                  Solve one quiz and get <span className="text-purple-900 font-bold mx-1">10 points</span> automatically!
+                </p>
+                <p className="text-xs text-purple-600 flex items-center">
+                  ⏱️ <span className="font-semibold ml-1">Points are awarded automatically after at least 10 seconds</span> when you complete and close the quiz.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowCPALeadQuiz(!showCPALeadQuiz)}
+              className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg flex items-center ml-4"
+            >
+              {showCPALeadQuiz ? 'Hide' : 'Start Quiz'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+          {showCPALeadQuiz && (
+            <div className="mt-4 border rounded-lg overflow-hidden">
+              <CPALeadQuiz
+                quizUrl={cpaleadQuizUrl}
+                userId={user.uid}
+                onComplete={(data) => {
+                  alert(`Quiz completed! You earned ${data.reward} points!`);
+                  loadTasks();
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Ongoing Tasks Section - DISABLED (only showing CPAlead tasks) */}
       {false && ongoingTasks.length > 0 && (
         <div className="card mb-8">
@@ -257,37 +299,6 @@ export default function Tasks({ user }) {
               <CPALeadFileLocker
                 lockerUrl={cpaleadFileLockerUrl}
                 userId={user.uid}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* CPAlead Quiz Section */}
-      {cpaleadQuizUrl && (
-        <div className="card mb-8 border-2 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Gift className="w-6 h-6 mr-2 text-purple-600" />
-              CPAlead Quiz - Test Your Knowledge & Earn
-            </h2>
-            <button
-              onClick={() => setShowCPALeadQuiz(!showCPALeadQuiz)}
-              className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg flex items-center"
-            >
-              {showCPALeadQuiz ? 'Hide' : 'Start Quiz'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-          {showCPALeadQuiz && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
-              <CPALeadQuiz
-                quizUrl={cpaleadQuizUrl}
-                userId={user.uid}
-                onComplete={(data) => {
-                  alert(`Quiz completed! Reward: ${data.reward} points`);
-                  loadTasks();
-                }}
               />
             </div>
           )}

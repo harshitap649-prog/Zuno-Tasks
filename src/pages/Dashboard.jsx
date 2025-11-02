@@ -153,11 +153,23 @@ export default function Dashboard({ user }) {
   };
 
   const onAdComplete = async () => {
-    const result = await updateWatchCount(user.uid, 10);
-    if (result.success) {
-      await loadData();
-      setShowAdModal(false);
-      alert('🎉 You earned 10 points!');
+    console.log('📞 onAdComplete called - attempting to award 10 points...');
+    try {
+      const result = await updateWatchCount(user.uid, 10);
+      console.log('📊 updateWatchCount result:', result);
+      
+      if (result.success) {
+        console.log('✅ Points awarded successfully!');
+        await loadData();
+        setShowAdModal(false);
+        alert('🎉 You earned 10 points!');
+      } else {
+        console.error('❌ Failed to award points:', result.error);
+        alert('⚠️ Failed to award points: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('❌ Error in onAdComplete:', error);
+      alert('⚠️ Error awarding points. Please refresh and try again.');
     }
   };
 
@@ -228,11 +240,14 @@ export default function Dashboard({ user }) {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold mb-2">Watch Ad</h3>
-              <p className="text-sm opacity-90">
+              <p className="text-sm opacity-90 mb-1">
                 {canWatchAd
                   ? 'Earn 10 points by watching an ad'
                   : 'Daily limit reached (3/3)'}
               </p>
+              {canWatchAd && (
+                <p className="text-xs opacity-80">⏱️ Watch ad more than 20 seconds to earn 10 points</p>
+              )}
             </div>
             <PlayCircle className="w-16 h-16 opacity-50" />
           </div>
@@ -301,13 +316,13 @@ export default function Dashboard({ user }) {
 
       {/* Tasks Section */}
       <div className="card">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center justify-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center justify-center mb-4">
           <Gift className="w-6 h-6 mr-2 text-purple-600" />
           Available Tasks
         </h2>
 
         {offers.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="text-center py-8">
             <Gift className="w-16 h-16 mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500 mb-4">No tasks available at the moment. Check back later!</p>
             <button
@@ -318,10 +333,7 @@ export default function Dashboard({ user }) {
             </button>
           </div>
         ) : (
-          <div className="text-center py-8">
-            <p className="text-gray-600 mb-6">
-              {offers.length} task{offers.length !== 1 ? 's' : ''} available
-            </p>
+          <div className="text-center py-4">
             <button
               onClick={() => navigate('/tasks')}
               className="btn-primary flex items-center mx-auto"

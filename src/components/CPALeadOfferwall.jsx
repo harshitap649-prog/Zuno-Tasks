@@ -164,7 +164,8 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
           scrolling="yes"
           className="border-0"
           title="CPAlead Offerwall"
-          allow="payment"
+          allow="payment; popups; popups-to-escape-sandbox; fullscreen"
+          style={{ pointerEvents: 'auto' }}
         />
       </div>
     </div>
