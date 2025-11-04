@@ -11,9 +11,12 @@ import {
   getAllSupportMessages,
   updateSupportMessageStatus,
   getAdminSettings,
-  updateAdminSettings
+  updateAdminSettings,
+  getAllClientCaptchas,
+  getQuizCompletionStats
 } from '../firebase/firestore';
-import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare } from 'lucide-react';
+import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare, ShieldCheck, Image, Loader2, PlayCircle, FileText } from 'lucide-react';
+import ClientCaptchasTab from '../components/ClientCaptchasTab';
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('users');
@@ -21,6 +24,8 @@ export default function AdminPanel() {
   const [withdrawals, setWithdrawals] = useState([]);
   const [offers, setOffers] = useState([]);
   const [supportMessages, setSupportMessages] = useState([]);
+  const [clientCaptchas, setClientCaptchas] = useState([]);
+  const [quizStats, setQuizStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,17 +34,21 @@ export default function AdminPanel() {
 
   const loadData = async () => {
     setLoading(true);
-    const [usersResult, withdrawalsResult, offersResult, supportResult] = await Promise.all([
+    const [usersResult, withdrawalsResult, offersResult, supportResult, captchasResult, quizStatsResult] = await Promise.all([
       getAllUsers(),
       getAllWithdrawals(),
       getActiveOffers(),
       getAllSupportMessages(),
+      getAllClientCaptchas(100),
+      getQuizCompletionStats(),
     ]);
 
     if (usersResult.success) setUsers(usersResult.users);
     if (withdrawalsResult.success) setWithdrawals(withdrawalsResult.withdrawals);
     if (offersResult.success) setOffers(offersResult.offers);
     if (supportResult.success) setSupportMessages(supportResult.messages);
+    if (captchasResult.success) setClientCaptchas(captchasResult.captchas);
+    if (quizStatsResult.success) setQuizStats(quizStatsResult.stats);
     setLoading(false);
   };
 
@@ -126,7 +135,7 @@ export default function AdminPanel() {
       </h1>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
         <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
           <p className="text-blue-100 text-sm font-medium">Total Users</p>
           <p className="text-3xl font-bold mt-2">{totalUsers}</p>
@@ -143,6 +152,13 @@ export default function AdminPanel() {
           <p className="text-yellow-100 text-sm font-medium">Est. Profit</p>
           <p className="text-3xl font-bold mt-2">₹{(estimatedProfit / 100).toFixed(0)}</p>
         </div>
+        {quizStats && (
+          <div className="card bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+            <p className="text-indigo-100 text-sm font-medium">Quiz Completions</p>
+            <p className="text-3xl font-bold mt-2">{quizStats.totalCompletions}</p>
+            <p className="text-xs text-indigo-200 mt-1">Est. Revenue: ₹{quizStats.estimatedRevenue.toFixed(2)}</p>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -153,6 +169,7 @@ export default function AdminPanel() {
             { id: 'withdrawals', label: `Withdrawals (${pendingWithdrawals.length})`, icon: DollarSign },
             { id: 'support', label: `Support (${pendingSupportMessages.length})`, icon: HelpCircle },
             { id: 'offers', label: 'Offers', icon: Gift },
+            { id: 'captchas', label: `Captchas (${clientCaptchas.filter(c => c.status === 'pending').length})`, icon: ShieldCheck },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -198,6 +215,13 @@ export default function AdminPanel() {
       {activeTab === 'offers' && (
         <OffersTab
           offers={offers}
+          onReload={loadData}
+        />
+      )}
+
+      {activeTab === 'captchas' && (
+        <ClientCaptchasTab
+          captchas={clientCaptchas}
           onReload={loadData}
         />
       )}
@@ -441,21 +465,46 @@ function OffersTab({ offers, onReload }) {
   const [showOfferToroConfig, setShowOfferToroConfig] = useState(false);
   const [showInstantNetworkConfig, setShowInstantNetworkConfig] = useState(false);
   const [showCPALeadConfig, setShowCPALeadConfig] = useState(false);
+  const [showCaptchaConfig, setShowCaptchaConfig] = useState(false);
+  const [showAyetStudiosConfig, setShowAyetStudiosConfig] = useState(false);
+  const [showCPXResearchConfig, setShowCPXResearchConfig] = useState(false);
+  const [showLootablyConfig, setShowLootablyConfig] = useState(false);
+  const [showAdGemConfig, setShowAdGemConfig] = useState(false);
+  const [showHideoutTvConfig, setShowHideoutTvConfig] = useState(false);
   const [offertoroApiKey, setOffertoroApiKey] = useState('');
   const [instantNetwork, setInstantNetwork] = useState('');
   const [instantNetworkApiKey, setInstantNetworkApiKey] = useState('');
+  const [ayetStudiosApiKey, setAyetStudiosApiKey] = useState('');
+  const [ayetStudiosOfferwallUrl, setAyetStudiosOfferwallUrl] = useState('');
+  const [cpxResearchApiKey, setCpxResearchApiKey] = useState('');
+  const [cpxResearchOfferwallUrl, setCpxResearchOfferwallUrl] = useState('');
+  const [lootablyApiKey, setLootablyApiKey] = useState('');
+  const [lootablyOfferwallUrl, setLootablyOfferwallUrl] = useState('');
+  const [adgemApiKey, setAdgemApiKey] = useState('');
+  const [adgemOfferwallUrl, setAdgemOfferwallUrl] = useState('');
+  const [hideoutTvApiKey, setHideoutTvApiKey] = useState('');
+  const [hideoutTvOfferwallUrl, setHideoutTvOfferwallUrl] = useState('');
   const [cpaleadPublisherId, setCPALeadPublisherId] = useState('');
   const [cpaleadLinkLockerUrl, setCPALeadLinkLockerUrl] = useState('');
   const [cpaleadFileLockerUrl, setCPALeadFileLockerUrl] = useState('');
   const [cpaleadQuizUrl, setCPALeadQuizUrl] = useState('');
+  const [captchaPointsPerSolve, setCaptchaPointsPerSolve] = useState(1);
   const [syncing, setSyncing] = useState(false);
+  
+  // Multiple source management
+  const [showMultiSourceConfig, setShowMultiSourceConfig] = useState(false);
+  const [quizSources, setQuizSources] = useState([]);
+  const [surveySources, setSurveySources] = useState([]);
+  const [videoSources, setVideoSources] = useState([]);
+  const [appSources, setAppSources] = useState([]);
+  const [newSource, setNewSource] = useState({ type: 'quiz', name: '', url: '', source: '' });
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     rewardPoints: '',
     link: '',
     active: true,
-    category: 'general',
+                category: 'surveys',
     isAffiliate: false,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -475,6 +524,23 @@ function OffersTab({ offers, onReload }) {
         setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
         setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
         setCPALeadQuizUrl(settings.cpaleadQuizUrl || '');
+        setAyetStudiosApiKey(settings.ayetStudiosApiKey || '');
+        setAyetStudiosOfferwallUrl(settings.ayetStudiosOfferwallUrl || '');
+        setCpxResearchApiKey(settings.cpxResearchApiKey || '');
+        setCpxResearchOfferwallUrl(settings.cpxResearchOfferwallUrl || '');
+        setLootablyApiKey(settings.lootablyApiKey || '');
+        setLootablyOfferwallUrl(settings.lootablyOfferwallUrl || '');
+        setAdgemApiKey(settings.adgemApiKey || '');
+        setAdgemOfferwallUrl(settings.adgemOfferwallUrl || '');
+        setHideoutTvApiKey(settings.hideoutTvApiKey || '');
+        setHideoutTvOfferwallUrl(settings.hideoutTvOfferwallUrl || '');
+        
+        // Load additional sources for categories
+        setQuizSources(settings.quizzes || []);
+        setSurveySources(settings.surveys || []);
+        setVideoSources(settings.videos || []);
+        setAppSources(settings.apps || []);
+        setCaptchaPointsPerSolve(settings.captchaPointsPerSolve || 1);
         
         // Also sync to localStorage for backward compatibility
         if (settings.offertoroApiKey) localStorage.setItem('offertoro_api_key', settings.offertoroApiKey);
@@ -484,6 +550,16 @@ function OffersTab({ offers, onReload }) {
         if (settings.cpaleadLinkLockerUrl) localStorage.setItem('cpalead_link_locker_url', settings.cpaleadLinkLockerUrl);
         if (settings.cpaleadFileLockerUrl) localStorage.setItem('cpalead_file_locker_url', settings.cpaleadFileLockerUrl);
         if (settings.cpaleadQuizUrl) localStorage.setItem('cpalead_quiz_url', settings.cpaleadQuizUrl);
+        if (settings.ayetStudiosApiKey) localStorage.setItem('ayet_studios_api_key', settings.ayetStudiosApiKey);
+        if (settings.ayetStudiosOfferwallUrl) localStorage.setItem('ayet_studios_offerwall_url', settings.ayetStudiosOfferwallUrl);
+        if (settings.cpxResearchApiKey) localStorage.setItem('cpx_research_api_key', settings.cpxResearchApiKey);
+        if (settings.cpxResearchOfferwallUrl) localStorage.setItem('cpx_research_offerwall_url', settings.cpxResearchOfferwallUrl);
+        if (settings.lootablyApiKey) localStorage.setItem('lootably_api_key', settings.lootablyApiKey);
+        if (settings.lootablyOfferwallUrl) localStorage.setItem('lootably_offerwall_url', settings.lootablyOfferwallUrl);
+        if (settings.adgemApiKey) localStorage.setItem('adgem_api_key', settings.adgemApiKey);
+        if (settings.adgemOfferwallUrl) localStorage.setItem('adgem_offerwall_url', settings.adgemOfferwallUrl);
+        if (settings.hideoutTvApiKey) localStorage.setItem('hideout_tv_api_key', settings.hideoutTvApiKey);
+        if (settings.hideoutTvOfferwallUrl) localStorage.setItem('hideout_tv_offerwall_url', settings.hideoutTvOfferwallUrl);
       } else {
         // Fallback to localStorage if Firestore doesn't have settings
         const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
@@ -498,10 +574,30 @@ function OffersTab({ offers, onReload }) {
         const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
         const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
         const savedQuiz = localStorage.getItem('cpalead_quiz_url') || '';
+        const savedAyetApiKey = localStorage.getItem('ayet_studios_api_key') || '';
+        const savedAyetUrl = localStorage.getItem('ayet_studios_offerwall_url') || '';
+        const savedCpxApiKey = localStorage.getItem('cpx_research_api_key') || '';
+        const savedCpxUrl = localStorage.getItem('cpx_research_offerwall_url') || '';
+        const savedLootablyApiKey = localStorage.getItem('lootably_api_key') || '';
+        const savedLootablyUrl = localStorage.getItem('lootably_offerwall_url') || '';
+        const savedAdgemApiKey = localStorage.getItem('adgem_api_key') || '';
+        const savedAdgemUrl = localStorage.getItem('adgem_offerwall_url') || '';
+        const savedHideoutTvApiKey = localStorage.getItem('hideout_tv_api_key') || '';
+        const savedHideoutTvUrl = localStorage.getItem('hideout_tv_offerwall_url') || '';
         setCPALeadPublisherId(savedCPALeadId);
         setCPALeadLinkLockerUrl(savedLinkLocker);
         setCPALeadFileLockerUrl(savedFileLocker);
         setCPALeadQuizUrl(savedQuiz);
+        setAyetStudiosApiKey(savedAyetApiKey);
+        setAyetStudiosOfferwallUrl(savedAyetUrl);
+        setCpxResearchApiKey(savedCpxApiKey);
+        setCpxResearchOfferwallUrl(savedCpxUrl);
+        setLootablyApiKey(savedLootablyApiKey);
+        setLootablyOfferwallUrl(savedLootablyUrl);
+        setAdgemApiKey(savedAdgemApiKey);
+        setAdgemOfferwallUrl(savedAdgemUrl);
+        setHideoutTvApiKey(savedHideoutTvApiKey);
+        setHideoutTvOfferwallUrl(savedHideoutTvUrl);
       }
     };
     
@@ -588,11 +684,60 @@ function OffersTab({ offers, onReload }) {
             OfferToro
           </button>
           <button
+            onClick={() => setShowAyetStudiosConfig(!showAyetStudiosConfig)}
+            className="bg-gradient-to-r from-red-600 to-orange-600 text-white py-2 px-4 rounded-lg hover:from-red-700 hover:to-orange-700 flex items-center"
+          >
+            <PlayCircle className="w-5 h-5 mr-2" />
+            Ayet Studios (Videos)
+          </button>
+          <button
+            onClick={() => setShowCPXResearchConfig(!showCPXResearchConfig)}
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-indigo-700 hover:to-purple-700 flex items-center"
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            CPX Research (Surveys)
+          </button>
+          <button
+            onClick={() => setShowLootablyConfig(!showLootablyConfig)}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-2 px-4 rounded-lg hover:from-blue-700 hover:to-cyan-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            Lootably (All Tasks)
+          </button>
+          <button
+            onClick={() => setShowAdGemConfig(!showAdGemConfig)}
+            className="bg-gradient-to-r from-green-600 to-emerald-600 text-white py-2 px-4 rounded-lg hover:from-green-700 hover:to-emerald-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            AdGem (All Tasks)
+          </button>
+          <button
+            onClick={() => setShowHideoutTvConfig(!showHideoutTvConfig)}
+            className="bg-gradient-to-r from-pink-600 to-rose-600 text-white py-2 px-4 rounded-lg hover:from-pink-700 hover:to-rose-700 flex items-center"
+          >
+            <PlayCircle className="w-5 h-5 mr-2" />
+            Hideout.tv (Videos)
+          </button>
+          <button
             onClick={() => setShowCPALeadConfig(!showCPALeadConfig)}
             className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-blue-700 hover:to-purple-700 flex items-center"
           >
             <Gift className="w-5 h-5 mr-2" />
             CPAlead VIP
+          </button>
+          <button
+            onClick={() => setShowMultiSourceConfig(!showMultiSourceConfig)}
+            className="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 flex items-center"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Quiz/Survey Sources
+          </button>
+          <button
+            onClick={() => setShowCaptchaConfig(!showCaptchaConfig)}
+            className="bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 flex items-center"
+          >
+            <ShieldCheck className="w-5 h-5 mr-2" />
+            Captcha Settings
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -836,6 +981,7 @@ function OffersTab({ offers, onReload }) {
                   }
                   
                   // Save all configurations to Firestore (primary) and localStorage (backup)
+                  // Use merge: true to preserve existing sources
                   const settingsToSave = {
                     cpaleadPublisherId,
                   };
@@ -847,6 +993,15 @@ function OffersTab({ offers, onReload }) {
                   }
                   if (cpaleadQuizUrl) {
                     settingsToSave.cpaleadQuizUrl = cpaleadQuizUrl;
+                  }
+                  
+                  // Preserve existing sources when saving
+                  const currentSettings = await getAdminSettings();
+                  if (currentSettings.success && currentSettings.settings) {
+                    if (currentSettings.settings.quizzes) settingsToSave.quizzes = currentSettings.settings.quizzes;
+                    if (currentSettings.settings.surveys) settingsToSave.surveys = currentSettings.settings.surveys;
+                    if (currentSettings.settings.videos) settingsToSave.videos = currentSettings.settings.videos;
+                    if (currentSettings.settings.apps) settingsToSave.apps = currentSettings.settings.apps;
                   }
                   
                   const result = await updateAdminSettings(settingsToSave);
@@ -893,6 +1048,524 @@ function OffersTab({ offers, onReload }) {
                 ✓ CPAlead configured. Offerwall will be available to users on the Tasks page.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Captcha Configuration */}
+      {showCaptchaConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg border-2 border-orange-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <ShieldCheck className="w-6 h-6 mr-2 text-orange-600" />
+            Captcha Solving Settings
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Configure how many points users earn for each solved captcha. This is a custom captcha-solving system where users solve captchas directly on your site.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Points Per Solved Captcha
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={captchaPointsPerSolve}
+                onChange={(e) => setCaptchaPointsPerSolve(parseInt(e.target.value) || 1)}
+                placeholder="Enter points (e.g., 1, 2, 5)"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Recommended: 1-5 points per captcha. Higher points = more user engagement but higher costs.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!captchaPointsPerSolve || captchaPointsPerSolve < 1) {
+                    alert('Please enter a valid number of points (minimum 1)');
+                    return;
+                  }
+                  
+                  const result = await updateAdminSettings({
+                    captchaPointsPerSolve: captchaPointsPerSolve,
+                  });
+                  
+                  if (result.success) {
+                    alert(`✅ Captcha settings saved! Users will now earn ${captchaPointsPerSolve} point(s) per solved captcha.\n\nChanges will take effect immediately for all users.`);
+                    setShowCaptchaConfig(false);
+                    onReload();
+                  } else {
+                    alert(`⚠️ Failed to save settings. Error: ${result.error}`);
+                  }
+                }}
+                className="btn-primary flex items-center bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700"
+              >
+                Save Captcha Settings
+              </button>
+              <button
+                onClick={() => setShowCaptchaConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            {captchaPointsPerSolve && captchaPointsPerSolve > 0 && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ Current setting: <strong>{captchaPointsPerSolve} point(s)</strong> per solved captcha
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Ayet Studios Configuration */}
+      {showAyetStudiosConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-red-50 to-orange-50 rounded-lg border-2 border-red-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
+            Ayet Studios Video Integration
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Get your API key or offerwall URL from{' '}
+            <a href="https://ayetstudios.com/publishers" target="_blank" rel="noopener noreferrer" className="text-red-600 hover:underline">
+              Ayet Studios Dashboard
+            </a>
+            . Once configured, users will see video watching tasks on the Videos category.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Ayet Studios API Key (Optional)
+              </label>
+              <input
+                type="text"
+                value={ayetStudiosApiKey}
+                onChange={(e) => setAyetStudiosApiKey(e.target.value)}
+                placeholder="Enter your Ayet Studios API key"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                If you have an API key, enter it here. Otherwise, use the offerwall URL below.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Ayet Studios Offerwall URL (Recommended)
+              </label>
+              <input
+                type="text"
+                value={ayetStudiosOfferwallUrl}
+                onChange={(e) => setAyetStudiosOfferwallUrl(e.target.value)}
+                placeholder="https://offerwall.ayetstudios.com/?pub=YOUR_PUB_ID"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter your full offerwall URL from Ayet Studios dashboard. You can use {'{USER_ID}'} or {'{sub}'} as placeholder for user ID.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!ayetStudiosApiKey && !ayetStudiosOfferwallUrl) {
+                    alert('Please enter either API key or offerwall URL');
+                    return;
+                  }
+
+                  setSyncing(true);
+                  try {
+                    const result = await updateAdminSettings({
+                      ayetStudiosApiKey: ayetStudiosApiKey || '',
+                      ayetStudiosOfferwallUrl: ayetStudiosOfferwallUrl || '',
+                    });
+                    
+                    if (ayetStudiosApiKey) localStorage.setItem('ayet_studios_api_key', ayetStudiosApiKey);
+                    if (ayetStudiosOfferwallUrl) localStorage.setItem('ayet_studios_offerwall_url', ayetStudiosOfferwallUrl);
+
+                    if (result.success) {
+                      alert('✅ Ayet Studios video offerwall is ready! All users can now watch videos and earn points in the Videos category.');
+                      setShowAyetStudiosConfig(false);
+                      onReload();
+                    } else {
+                      alert('⚠️ Saved to local storage. Some users may not see videos. Error: ' + result.error);
+                    }
+                  } catch (error) {
+                    console.error('Error saving Ayet Studios config:', error);
+                    alert('Error saving configuration: ' + error.message);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || (!ayetStudiosApiKey && !ayetStudiosOfferwallUrl)}
+                className="btn-primary flex items-center bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700"
+              >
+                {syncing ? 'Configuring...' : 'Enable Ayet Studios'}
+              </button>
+              <button
+                onClick={() => setShowAyetStudiosConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            {(ayetStudiosApiKey || ayetStudiosOfferwallUrl) && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ Configuration saved. Ayet Studios videos will be available to users.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CPX Research Configuration */}
+      {showCPXResearchConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border-2 border-indigo-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <FileText className="w-6 h-6 mr-2 text-indigo-600" />
+            CPX Research Survey Integration
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Get your API key or offerwall URL from{' '}
+            <a href="https://cpx-research.com/publishers" target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+              CPX Research Dashboard
+            </a>
+            . CPX Research offers high-paying surveys with instant approval. Once configured, users will see surveys in the Surveys category. Note: Survey rewards (+0.00) are shown after completion.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                CPX Research API Key (Optional)
+              </label>
+              <input
+                type="text"
+                value={cpxResearchApiKey}
+                onChange={(e) => setCpxResearchApiKey(e.target.value)}
+                placeholder="Enter your CPX Research API key"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                If you have an API key, enter it here. Otherwise, use the offerwall URL below.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                CPX Research Offerwall URL (Recommended)
+              </label>
+              <input
+                type="text"
+                value={cpxResearchOfferwallUrl}
+                onChange={(e) => setCpxResearchOfferwallUrl(e.target.value)}
+                placeholder="https://offers.cpx-research.com/?pub=YOUR_PUB_ID"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Paste your full CPX Research iframe src URL here. You can use placeholders like {'{unique_user_id}'}, {'{user_name}'}, {'{user_email}'}, {'{secure_hash}'}. The system will automatically replace them with actual user data.
+              </p>
+              <p className="text-xs text-blue-600 mt-1 font-semibold">
+                💡 Example: https://offers.cpx-research.com/index.php?app_id=29825&ext_user_id={'{unique_user_id}'}&username={'{user_name}'}&email={'{user_email}'}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!cpxResearchApiKey && !cpxResearchOfferwallUrl) {
+                    alert('Please enter either API key or offerwall URL');
+                    return;
+                  }
+
+                  setSyncing(true);
+                  try {
+                    const result = await updateAdminSettings({
+                      cpxResearchApiKey: cpxResearchApiKey || '',
+                      cpxResearchOfferwallUrl: cpxResearchOfferwallUrl || '',
+                    });
+                    
+                    if (cpxResearchApiKey) localStorage.setItem('cpx_research_api_key', cpxResearchApiKey);
+                    if (cpxResearchOfferwallUrl) localStorage.setItem('cpx_research_offerwall_url', cpxResearchOfferwallUrl);
+
+                    if (result.success) {
+                      alert('✅ CPX Research surveys are ready! All users can now complete surveys and earn high rewards in the Surveys category. Note: Survey rewards (+0.00) are shown after completion.');
+                      setShowCPXResearchConfig(false);
+                      onReload();
+                    } else {
+                      alert('⚠️ Saved to local storage. Some users may not see surveys. Error: ' + result.error);
+                    }
+                  } catch (error) {
+                    console.error('Error saving CPX Research config:', error);
+                    alert('Error saving configuration: ' + error.message);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || (!cpxResearchApiKey && !cpxResearchOfferwallUrl)}
+                className="btn-primary flex items-center bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+              >
+                {syncing ? 'Configuring...' : 'Enable CPX Research'}
+              </button>
+              <button
+                onClick={() => setShowCPXResearchConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            {(cpxResearchApiKey || cpxResearchOfferwallUrl) && (
+              <p className="text-xs text-green-600 mt-2">
+                ✓ Configuration saved. CPX Research surveys will be available to users. Rewards shown after completion.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Lootably Configuration */}
+      {showLootablyConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Gift className="w-6 h-6 mr-2 text-blue-600" />
+            Lootably Integration (Instant Approval)
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Get your API key from{' '}
+            <a href="https://www.lootably.com/publishers" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+              Lootably Dashboard
+            </a>
+            . Lootably offers surveys, apps, videos, and more with instant approval. Once configured, users will see offers in multiple categories.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Lootably API Key (Optional)
+              </label>
+              <input
+                type="text"
+                value={lootablyApiKey}
+                onChange={(e) => setLootablyApiKey(e.target.value)}
+                placeholder="Enter your Lootably API key"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Lootably Offerwall URL (Recommended)
+              </label>
+              <input
+                type="text"
+                value={lootablyOfferwallUrl}
+                onChange={(e) => setLootablyOfferwallUrl(e.target.value)}
+                placeholder="https://www.lootably.com/offers?pub=YOUR_API_KEY&sub={USER_ID}"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Use {'{USER_ID}'} as placeholder for user ID. System will replace it automatically.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!lootablyApiKey && !lootablyOfferwallUrl) {
+                    alert('Please enter either API key or offerwall URL');
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const result = await updateAdminSettings({ lootablyApiKey, lootablyOfferwallUrl });
+                    if (lootablyApiKey) localStorage.setItem('lootably_api_key', lootablyApiKey);
+                    if (lootablyOfferwallUrl) localStorage.setItem('lootably_offerwall_url', lootablyOfferwallUrl);
+                    if (result.success) {
+                      alert('✅ Lootably is ready! Users can now see offers in Surveys, Videos, and Apps categories.');
+                      setShowLootablyConfig(false);
+                      onReload();
+                    } else {
+                      alert('⚠️ Saved to local storage. Error: ' + result.error);
+                    }
+                  } catch (error) {
+                    console.error('Error saving Lootably config:', error);
+                    alert('Error saving configuration: ' + error.message);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || (!lootablyApiKey && !lootablyOfferwallUrl)}
+                className="btn-primary flex items-center bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+              >
+                {syncing ? 'Configuring...' : 'Enable Lootably'}
+              </button>
+              <button
+                onClick={() => setShowLootablyConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AdGem Configuration */}
+      {showAdGemConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Gift className="w-6 h-6 mr-2 text-green-600" />
+            AdGem Integration (Instant Approval)
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Get your API key from{' '}
+            <a href="https://www.adgem.com/publishers" target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">
+              AdGem Dashboard
+            </a>
+            . AdGem offers surveys, apps, videos, and more with instant approval. Once configured, users will see offers in multiple categories.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                AdGem API Key (Optional)
+              </label>
+              <input
+                type="text"
+                value={adgemApiKey}
+                onChange={(e) => setAdgemApiKey(e.target.value)}
+                placeholder="Enter your AdGem API key"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                AdGem Offerwall URL (Recommended)
+              </label>
+              <input
+                type="text"
+                value={adgemOfferwallUrl}
+                onChange={(e) => setAdgemOfferwallUrl(e.target.value)}
+                placeholder="https://www.adgem.com/offers?pub=YOUR_API_KEY&sub={USER_ID}"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Use {'{USER_ID}'} as placeholder for user ID. System will replace it automatically.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!adgemApiKey && !adgemOfferwallUrl) {
+                    alert('Please enter either API key or offerwall URL');
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const result = await updateAdminSettings({ adgemApiKey, adgemOfferwallUrl });
+                    if (adgemApiKey) localStorage.setItem('adgem_api_key', adgemApiKey);
+                    if (adgemOfferwallUrl) localStorage.setItem('adgem_offerwall_url', adgemOfferwallUrl);
+                    if (result.success) {
+                      alert('✅ AdGem is ready! Users can now see offers in Surveys, Videos, and Apps categories.');
+                      setShowAdGemConfig(false);
+                      onReload();
+                    } else {
+                      alert('⚠️ Saved to local storage. Error: ' + result.error);
+                    }
+                  } catch (error) {
+                    console.error('Error saving AdGem config:', error);
+                    alert('Error saving configuration: ' + error.message);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || (!adgemApiKey && !adgemOfferwallUrl)}
+                className="btn-primary flex items-center bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+              >
+                {syncing ? 'Configuring...' : 'Enable AdGem'}
+              </button>
+              <button
+                onClick={() => setShowAdGemConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hideout.tv Configuration */}
+      {showHideoutTvConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-pink-50 to-rose-50 rounded-lg border-2 border-pink-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <PlayCircle className="w-6 h-6 mr-2 text-pink-600" />
+            Hideout.tv Integration (Instant Approval)
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Get your API key from{' '}
+            <a href="https://www.hideout.tv/publishers" target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline">
+              Hideout.tv Dashboard
+            </a>
+            . Hideout.tv offers video watching with instant approval. Once configured, users will see videos in the Videos category.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Hideout.tv API Key (Optional)
+              </label>
+              <input
+                type="text"
+                value={hideoutTvApiKey}
+                onChange={(e) => setHideoutTvApiKey(e.target.value)}
+                placeholder="Enter your Hideout.tv API key"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Hideout.tv Offerwall URL (Recommended)
+              </label>
+              <input
+                type="text"
+                value={hideoutTvOfferwallUrl}
+                onChange={(e) => setHideoutTvOfferwallUrl(e.target.value)}
+                placeholder="https://www.hideout.tv/offers?pub=YOUR_API_KEY&sub={USER_ID}"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Use {'{USER_ID}'} as placeholder for user ID. System will replace it automatically.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!hideoutTvApiKey && !hideoutTvOfferwallUrl) {
+                    alert('Please enter either API key or offerwall URL');
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const result = await updateAdminSettings({ hideoutTvApiKey, hideoutTvOfferwallUrl });
+                    if (hideoutTvApiKey) localStorage.setItem('hideout_tv_api_key', hideoutTvApiKey);
+                    if (hideoutTvOfferwallUrl) localStorage.setItem('hideout_tv_offerwall_url', hideoutTvOfferwallUrl);
+                    if (result.success) {
+                      alert('✅ Hideout.tv is ready! Users can now watch videos and earn points in the Videos category.');
+                      setShowHideoutTvConfig(false);
+                      onReload();
+                    } else {
+                      alert('⚠️ Saved to local storage. Error: ' + result.error);
+                    }
+                  } catch (error) {
+                    console.error('Error saving Hideout.tv config:', error);
+                    alert('Error saving configuration: ' + error.message);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || (!hideoutTvApiKey && !hideoutTvOfferwallUrl)}
+                className="btn-primary flex items-center bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700"
+              >
+                {syncing ? 'Configuring...' : 'Enable Hideout.tv'}
+              </button>
+              <button
+                onClick={() => setShowHideoutTvConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -944,6 +1617,222 @@ function OffersTab({ offers, onReload }) {
                 ✓ API key saved. OfferToro offerwall will be available to users.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Multiple Quiz/Survey Sources Configuration */}
+      {showMultiSourceConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border-2 border-indigo-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Plus className="w-6 h-6 mr-2 text-indigo-600" />
+            Add Multiple Quiz/Survey/Video/App Sources
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Add multiple quiz, survey, video, or app sources from different websites. They will appear in the appropriate category on the Tasks page.
+          </p>
+          
+          {/* Add New Source Form */}
+          <div className="mb-6 p-4 bg-white rounded-lg border border-indigo-200">
+            <h4 className="font-semibold text-gray-800 mb-3">Add New Source</h4>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <select
+                  value={newSource.type}
+                  onChange={(e) => setNewSource({ ...newSource, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="quiz">Quiz</option>
+                  <option value="survey">Survey</option>
+                  <option value="video">Video</option>
+                  <option value="app">App</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Source Name</label>
+                <input
+                  type="text"
+                  value={newSource.source}
+                  onChange={(e) => setNewSource({ ...newSource, source: e.target.value })}
+                  placeholder="e.g., CPAlead, OfferToro"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+                <input
+                  type="text"
+                  value={newSource.name}
+                  onChange={(e) => setNewSource({ ...newSource, name: e.target.value })}
+                  placeholder="e.g., CPAlead Quizzes"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                <input
+                  type="text"
+                  value={newSource.url}
+                  onChange={(e) => setNewSource({ ...newSource, url: e.target.value })}
+                  placeholder="Enter source URL"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (!newSource.url || !newSource.source) {
+                  alert('Please fill in URL and Source name');
+                  return;
+                }
+                const sourceData = { ...newSource };
+                switch (newSource.type) {
+                  case 'quiz':
+                    setQuizSources([...quizSources, sourceData]);
+                    break;
+                  case 'survey':
+                    setSurveySources([...surveySources, sourceData]);
+                    break;
+                  case 'video':
+                    setVideoSources([...videoSources, sourceData]);
+                    break;
+                  case 'app':
+                    setAppSources([...appSources, sourceData]);
+                    break;
+                }
+                setNewSource({ type: 'quiz', name: '', url: '', source: '' });
+              }}
+              className="mt-3 bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700"
+            >
+              Add Source
+            </button>
+          </div>
+
+          {/* Display Current Sources */}
+          <div className="space-y-4">
+            {/* Quiz Sources */}
+            {quizSources.length > 0 && (
+              <div className="p-4 bg-white rounded-lg border border-purple-200">
+                <h4 className="font-semibold text-purple-700 mb-2">Quiz Sources ({quizSources.length})</h4>
+                {quizSources.map((source, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-purple-50 rounded mb-2">
+                    <div>
+                      <span className="font-medium">{source.name || `${source.source} Quiz`}</span>
+                      <span className="text-xs text-gray-500 ml-2">({source.source})</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setQuizSources(quizSources.filter((_, i) => i !== index));
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Survey Sources */}
+            {surveySources.length > 0 && (
+              <div className="p-4 bg-white rounded-lg border border-green-200">
+                <h4 className="font-semibold text-green-700 mb-2">Survey Sources ({surveySources.length})</h4>
+                {surveySources.map((source, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-green-50 rounded mb-2">
+                    <div>
+                      <span className="font-medium">{source.name || `${source.source} Surveys`}</span>
+                      <span className="text-xs text-gray-500 ml-2">({source.source})</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSurveySources(surveySources.filter((_, i) => i !== index));
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Video Sources */}
+            {videoSources.length > 0 && (
+              <div className="p-4 bg-white rounded-lg border border-red-200">
+                <h4 className="font-semibold text-red-700 mb-2">Video Sources ({videoSources.length})</h4>
+                {videoSources.map((source, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-red-50 rounded mb-2">
+                    <div>
+                      <span className="font-medium">{source.name || `${source.source} Videos`}</span>
+                      <span className="text-xs text-gray-500 ml-2">({source.source})</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setVideoSources(videoSources.filter((_, i) => i !== index));
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* App Sources */}
+            {appSources.length > 0 && (
+              <div className="p-4 bg-white rounded-lg border border-indigo-200">
+                <h4 className="font-semibold text-indigo-700 mb-2">App Sources ({appSources.length})</h4>
+                {appSources.map((source, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-indigo-50 rounded mb-2">
+                    <div>
+                      <span className="font-medium">{source.name || `${source.source} Apps`}</span>
+                      <span className="text-xs text-gray-500 ml-2">({source.source})</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAppSources(appSources.filter((_, i) => i !== index));
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Save Button */}
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={async () => {
+                const result = await updateAdminSettings({
+                  quizzes: quizSources,
+                  surveys: surveySources,
+                  videos: videoSources,
+                  apps: appSources,
+                });
+                
+                if (result.success) {
+                  alert(`✅ ${quizSources.length} quiz, ${surveySources.length} survey, ${videoSources.length} video, and ${appSources.length} app sources saved successfully! All users will see them in the appropriate categories.`);
+                  setShowMultiSourceConfig(false);
+                  onReload();
+                } else {
+                  alert(`⚠️ Failed to save: ${result.error}`);
+                }
+              }}
+              className="btn-primary flex items-center"
+            >
+              Save All Sources
+            </button>
+            <button
+              onClick={() => setShowMultiSourceConfig(false)}
+              className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
@@ -1119,27 +2008,47 @@ function OffersTab({ offers, onReload }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Task / Affiliate Link *
+                Task / Referral / Affiliate Link *
               </label>
               <input
                 type="url"
                 value={formData.link}
                 onChange={(e) => setFormData({ ...formData, link: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                placeholder="https://example.com/your-affiliate-link"
+                placeholder="https://example.com/your-affiliate-link?ref=YOUR_CODE"
                 required
               />
               <p className="text-xs text-gray-600 mt-1">
-                {formData.link.includes('YOUR_REFERRAL_CODE') || formData.link.includes('YOUR_') ? (
-                  <span className="text-orange-600">⚠️ Replace placeholder with your actual affiliate code!</span>
+                {formData.link.includes('YOUR_REFERRAL_CODE') || formData.link.includes('YOUR_') || formData.link.includes('YOUR_CODE') ? (
+                  <span className="text-orange-600">⚠️ Replace placeholder with your actual referral/affiliate code!</span>
                 ) : (
-                  <span className="text-green-600">✓ Link format looks good</span>
+                  <span className="text-green-600">✓ Link format looks good - Your referral/affiliate link will be used when users click</span>
                 )}
+              </p>
+              <p className="text-xs text-blue-600 mt-1 font-semibold">
+                💡 Tip: Add your referral code or affiliate ID to the URL. Users will click this link directly, so you'll earn commission!
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category *
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                required
+              >
+                <option value="surveys">Surveys</option>
+                <option value="quizzes">Quizzes</option>
+                <option value="videos">Videos</option>
+                <option value="apps">Apps</option>
+                <option value="general">General</option>
+              </select>
+            </div>
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -1149,7 +2058,7 @@ function OffersTab({ offers, onReload }) {
                 className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
               />
               <label htmlFor="isAffiliate" className="ml-2 text-sm text-gray-700">
-                This is an affiliate link (I earn commission)
+                This is an affiliate/referral link (I earn commission)
               </label>
             </div>
           </div>
@@ -1166,7 +2075,7 @@ function OffersTab({ offers, onReload }) {
               type="button"
               onClick={() => {
                 setShowAddForm(false);
-                setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'general', isAffiliate: false });
+                setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'surveys', isAffiliate: false });
               }}
               className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
             >

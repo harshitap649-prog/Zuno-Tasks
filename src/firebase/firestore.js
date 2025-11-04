@@ -65,7 +65,7 @@ export const ensureDailyWatchReset = async (uid) => {
   }
 };
 
-export const updateUserPoints = async (uid, pointsToAdd) => {
+export const updateUserPoints = async (uid, pointsToAdd, transactionType = 'task') => {
   try {
     const userRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userRef);
@@ -83,7 +83,7 @@ export const updateUserPoints = async (uid, pointsToAdd) => {
       // Add transaction
       await addDoc(collection(db, 'transactions'), {
         userId: uid,
-        type: 'task',
+        type: transactionType,
         points: pointsToAdd,
         timestamp: serverTimestamp(),
       });
@@ -102,7 +102,7 @@ export const updateUserPoints = async (uid, pointsToAdd) => {
   }
 };
 
-export const updateWatchCount = async (uid, rewardPoints = 10) => {
+export const updateWatchCount = async (uid, rewardPoints = 5) => {
   try {
     const userRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userRef);
@@ -743,6 +743,15 @@ export const getAdminSettings = async () => {
   }
 };
 
+// Support for multiple quiz/survey sources
+// Settings structure will be:
+// {
+//   quizzes: [{ source: 'cpalead', url: '...' }, { source: 'other', url: '...' }],
+//   surveys: [{ source: 'cpalead', url: '...' }, ...],
+//   videos: [...],
+//   apps: [...]
+// }
+
 export const updateAdminSettings = async (settings) => {
   try {
     await setDoc(doc(db, 'adminSettings', 'offerwallConfig'), {
@@ -765,5 +774,220 @@ export const subscribeToAdminSettings = (callback) => {
       callback({});
     }
   });
+};
+
+// ============================================
+// CAPTCHA MIDDLEMAN SYSTEM - CLIENT CAPTCHAS
+// ============================================
+
+// Submit a captcha from a client (stores in Firestore)
+export const submitClientCaptcha = async (captchaData) => {
+  try {
+    const captchaId = `captcha_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const captchaDoc = {
+      captchaId,
+      captchaImage: captchaData.captchaImage, // Base64 image or URL
+      captchaType: captchaData.captchaType || 'image',
+      clientId: captchaData.clientId || 'anonymous',
+      status: 'pending', // pending, solving, solved, expired
+      submittedAt: serverTimestamp(),
+      assignedTo: null, // userId who is solving it
+      solution: null,
+      solvedAt: null,
+      expiresAt: null, // Optional: set expiration time
+      pointsAwarded: null, // Points awarded to solver
+    };
+
+    await addDoc(collection(db, 'clientCaptchas'), captchaDoc);
+    
+    return { success: true, captchaId };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get pending captchas for users to solve
+export const getPendingCaptchas = async (limitCount = 10) => {
+  try {
+    const q = query(
+      collection(db, 'clientCaptchas'),
+      where('status', '==', 'pending'),
+      orderBy('submittedAt', 'asc'),
+      limit(limitCount)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const captchas = [];
+    
+    querySnapshot.forEach((doc) => {
+      captchas.push({ id: doc.id, ...doc.data() });
+    });
+    
+    return { success: true, captchas };
+  } catch (error) {
+    return { success: false, error: error.message, captchas: [] };
+  }
+};
+
+// Assign a captcha to a user for solving
+export const assignCaptchaToUser = async (captchaId, userId) => {
+  try {
+    const captchaRef = doc(db, 'clientCaptchas', captchaId);
+    await updateDoc(captchaRef, {
+      status: 'solving',
+      assignedTo: userId,
+      assignedAt: serverTimestamp(),
+    });
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Submit solution for a captcha
+export const submitCaptchaSolution = async (captchaId, userId, solution) => {
+  try {
+    const captchaRef = doc(db, 'clientCaptchas', captchaId);
+    const captchaDoc = await getDoc(captchaRef);
+    
+    if (!captchaDoc.exists()) {
+      return { success: false, error: 'Captcha not found' };
+    }
+    
+    const captchaData = captchaDoc.data();
+    
+    // Verify user is assigned to this captcha
+    if (captchaData.assignedTo !== userId) {
+      return { success: false, error: 'You are not assigned to this captcha' };
+    }
+    
+    // Update captcha with solution
+    await updateDoc(captchaRef, {
+      status: 'solved',
+      solution: solution,
+      solvedAt: serverTimestamp(),
+    });
+    
+    // Award points to user (from admin settings)
+    const settingsResult = await getAdminSettings();
+    const pointsPerCaptcha = settingsResult.settings?.captchaPointsPerSolve || 1;
+    
+    const pointsResult = await updateUserPoints(userId, pointsPerCaptcha, 'captcha');
+    
+    if (pointsResult.success) {
+      // Update captcha with points awarded
+      await updateDoc(captchaRef, {
+        pointsAwarded: pointsPerCaptcha,
+      });
+    }
+    
+    return { success: true, pointsAwarded: pointsPerCaptcha };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get captcha result for client (check if solved)
+export const getCaptchaResult = async (captchaId) => {
+  try {
+    // First try by captchaId field
+    let q = query(
+      collection(db, 'clientCaptchas'),
+      where('captchaId', '==', captchaId),
+      limit(1)
+    );
+    
+    let querySnapshot = await getDocs(q);
+    
+    // If not found, try by document ID
+    if (querySnapshot.empty) {
+      const captchaRef = doc(db, 'clientCaptchas', captchaId);
+      const captchaDoc = await getDoc(captchaRef);
+      
+      if (captchaDoc.exists()) {
+        const data = captchaDoc.data();
+        return {
+          success: true,
+          captchaId: data.captchaId || captchaId,
+          status: data.status,
+          solution: data.solution,
+          solvedAt: data.solvedAt,
+        };
+      }
+    } else {
+      const captchaData = querySnapshot.docs[0].data();
+      return {
+        success: true,
+        captchaId: captchaData.captchaId,
+        status: captchaData.status,
+        solution: captchaData.solution,
+        solvedAt: captchaData.solvedAt,
+      };
+    }
+    
+    return { success: false, error: 'Captcha not found' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// Get all client captchas (for admin panel)
+export const getAllClientCaptchas = async (limitCount = 100) => {
+  try {
+    const q = query(
+      collection(db, 'clientCaptchas'),
+      orderBy('submittedAt', 'desc'),
+      limit(limitCount)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const captchas = [];
+    
+    querySnapshot.forEach((doc) => {
+      captchas.push({ id: doc.id, ...doc.data() });
+    });
+    
+    return { success: true, captchas };
+  } catch (error) {
+    return { success: false, error: error.message, captchas: [] };
+  }
+};
+
+// Get quiz completion stats (for developer revenue tracking)
+export const getQuizCompletionStats = async () => {
+  try {
+    const q = query(
+      collection(db, 'quizCompletions'),
+      orderBy('timestamp', 'desc'),
+      limit(1000)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const completions = [];
+    
+    querySnapshot.forEach((doc) => {
+      completions.push({ id: doc.id, ...doc.data() });
+    });
+    
+    // Calculate stats
+    const totalCompletions = completions.length;
+    const totalPointsGiven = completions.reduce((sum, c) => sum + (c.points || 5), 0);
+    const uniqueUsers = new Set(completions.map(c => c.userId)).size;
+    
+    return {
+      success: true,
+      completions,
+      stats: {
+        totalCompletions,
+        totalPointsGiven,
+        uniqueUsers,
+        estimatedRevenue: totalCompletions * 0.50, // Assuming ₹0.50 per quiz (adjust based on your CPAlead revenue)
+      }
+    };
+  } catch (error) {
+    return { success: false, error: error.message, completions: [], stats: null };
+  }
 };
 

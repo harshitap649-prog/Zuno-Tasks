@@ -202,12 +202,12 @@ export default function WatchAdModal({ onClose, onComplete }) {
               {countdown}
             </div>
             <p className="text-gray-600">Preparing ad...</p>
-            <p className="text-xs text-gray-500 mt-3">⏱️ Watch ad more than 20 seconds to earn 10 points</p>
+            <p className="text-xs text-gray-500 mt-3">⏱️ Watch ad more than 20 seconds to earn 5 points</p>
           </div>
         ) : watching ? (
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Watch Ad to Earn Points</h3>
-            <p className="text-xs text-gray-600 mb-4 text-center">⏱️ Watch ad more than 20 seconds to earn 10 points</p>
+            <p className="text-xs text-gray-600 mb-4 text-center">⏱️ Watch ad more than 20 seconds to earn 5 points</p>
             
             {/* Simplified Progress Display - No countdown timer, just progress */}
             {adLoaded && (
@@ -248,9 +248,9 @@ export default function WatchAdModal({ onClose, onComplete }) {
                         </div>
                         <p className="text-xs text-center opacity-90">
                           {adWatchTime < 20 ? (
-                            <span>Watch more than <strong>20 seconds</strong> to earn <strong>10 points</strong></span>
+                            <span>Watch more than <strong>20 seconds</strong> to earn <strong>5 points</strong></span>
                           ) : (
-                            <span>✅ Complete! You've earned <strong>10 points</strong>!</span>
+                            <span>✅ Complete! You've earned <strong>5 points</strong>!</span>
                           )}
                         </p>
                       </div>
@@ -282,7 +282,7 @@ export default function WatchAdModal({ onClose, onComplete }) {
             {adLoaded ? (
               <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
                 <p className="text-xs text-green-800 text-center">
-                  ⏱️ <strong>Popunder Ad Active:</strong> The ad opened in a new tab/window. Watch for more than <strong>20 seconds</strong> to earn <strong>10 points</strong>. 
+                  ⏱️ <strong>Popunder Ad Active:</strong> The ad opened in a new tab/window. Watch for more than <strong>20 seconds</strong> to earn <strong>5 points</strong>. 
                   {adWatchTime < 20 && ` Current: ${adWatchTime}/20 seconds.`}
                   {adWatchTime >= 20 && ` ✅ You've completed the requirement!`}
                 </p>

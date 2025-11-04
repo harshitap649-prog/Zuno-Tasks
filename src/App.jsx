@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { onAuthStateChange } from './firebase/auth';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import SolveCaptchas from './pages/SolveCaptchas';
 import Tasks from './pages/Tasks';
 import Wallet from './pages/Wallet';
 import Withdraw from './pages/Withdraw';
@@ -83,6 +84,10 @@ function App() {
             <Route 
               path="/help" 
               element={user ? <HelpSupport user={user} /> : <Navigate to="/login" />} 
+            />
+            <Route
+              path="/captchas"
+              element={user ? <SolveCaptchas user={user} /> : <Navigate to="/login" />}
             />
             <Route 
               path="/admin" 
