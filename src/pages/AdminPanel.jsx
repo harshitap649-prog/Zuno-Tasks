@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   getAllUsers, 
   getAllWithdrawals, 
@@ -8,6 +8,8 @@ import {
   updateWithdrawalStatus,
   banUser,
   adjustUserPoints,
+  disableUser,
+  deleteUser,
   getAllSupportMessages,
   updateSupportMessageStatus,
   getAdminSettings,
@@ -15,7 +17,7 @@ import {
   getAllClientCaptchas,
   getQuizCompletionStats
 } from '../firebase/firestore';
-import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare, ShieldCheck, Image, Loader2, PlayCircle, FileText } from 'lucide-react';
+import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare, ShieldCheck, Image, Loader2, PlayCircle, FileText, TrendingUp, Activity, Sparkles, Trash2, Power, Send, Shield, AlertCircle, User } from 'lucide-react';
 import ClientCaptchasTab from '../components/ClientCaptchasTab';
 
 export default function AdminPanel() {
@@ -31,6 +33,11 @@ export default function AdminPanel() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Debug: Log activeTab changes
+  useEffect(() => {
+    console.log('Active tab changed to:', activeTab);
+  }, [activeTab]);
 
   const loadData = async () => {
     setLoading(true);
@@ -97,10 +104,42 @@ export default function AdminPanel() {
     }
   };
 
+  const handleDisableUser = async (uid, currentStatus) => {
+    const newStatus = !currentStatus;
+    if (newStatus && !confirm('Are you sure you want to disable this user account? Disabled users cannot access the platform.')) {
+      return;
+    }
+    const result = await disableUser(uid, newStatus);
+    if (result.success) {
+      await loadData();
+      alert(`User account ${newStatus ? 'disabled' : 'enabled'} successfully.`);
+    } else {
+      alert('Failed to update user status: ' + result.error);
+    }
+  };
+
+  const handleDeleteUser = async (uid, userName) => {
+    if (!confirm(`⚠️ WARNING: Are you sure you want to permanently delete user "${userName}"?\n\nThis will:\n- Delete the user account\n- Delete all their transactions\n- Delete all their withdrawal requests\n- Delete all their support messages\n\nThis action CANNOT be undone!`)) {
+      return;
+    }
+    
+    if (!confirm('This is your last chance. Are you absolutely sure you want to delete this user permanently?')) {
+      return;
+    }
+
+    const result = await deleteUser(uid);
+    if (result.success) {
+      await loadData();
+      alert('User deleted successfully.');
+    } else {
+      alert('Failed to delete user: ' + result.error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-600"></div>
       </div>
     );
   }
@@ -119,6 +158,25 @@ export default function AdminPanel() {
     }
   };
 
+  const handleMarkAllAsRead = async (userId) => {
+    try {
+      // Find all unread messages from this user
+      const userMessages = supportMessages.filter(msg => 
+        msg.userId === userId && !msg.read
+      );
+      
+      // Mark all unread messages as read
+      const markPromises = userMessages.map(msg => 
+        updateSupportMessageStatus(msg.id, 'read', true)
+      );
+      
+      await Promise.all(markPromises);
+      await loadData();
+    } catch (err) {
+      console.error('Error marking all messages as read:', err);
+    }
+  };
+
   const handleUpdateStatus = async (messageId, status) => {
     const result = await updateSupportMessageStatus(messageId, status, true);
     if (result.success) {
@@ -127,65 +185,170 @@ export default function AdminPanel() {
     }
   };
 
+  const handleReply = async (messageId, replyText) => {
+    const { addAdminReply } = await import('../firebase/firestore');
+    const result = await addAdminReply(messageId, replyText, 'Support Team');
+    if (result.success) {
+      await loadData();
+      alert('Reply sent successfully!');
+    } else {
+      alert(`Failed to send reply: ${result.error}`);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    try {
+      const { adminDeleteSupportMessage } = await import('../firebase/firestore');
+      const result = await adminDeleteSupportMessage(messageId);
+      if (result.success) {
+        await loadData();
+        alert('Message deleted successfully!');
+      } else {
+        alert(`Failed to delete message: ${result.error}`);
+      }
+    } catch (err) {
+      alert('An error occurred while deleting the message.');
+      console.error('Delete error:', err);
+    }
+  };
+
+  const handleDeleteReply = async (messageId, replyIndex) => {
+    try {
+      const { deleteAdminReply } = await import('../firebase/firestore');
+      const result = await deleteAdminReply(messageId, replyIndex);
+      if (result.success) {
+        await loadData();
+        alert('Reply deleted successfully!');
+      } else {
+        alert(`Failed to delete reply: ${result.error}`);
+      }
+    } catch (err) {
+      alert('An error occurred while deleting the reply.');
+      console.error('Delete reply error:', err);
+    }
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-8 flex items-center">
-        <Settings className="w-8 h-8 mr-2 text-purple-600" />
-        Admin Panel
-      </h1>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
-        <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-          <p className="text-blue-100 text-sm font-medium">Total Users</p>
-          <p className="text-3xl font-bold mt-2">{totalUsers}</p>
-        </div>
-        <div className="card bg-gradient-to-br from-green-500 to-green-600 text-white">
-          <p className="text-green-100 text-sm font-medium">Total Points Given</p>
-          <p className="text-3xl font-bold mt-2">{(totalEarnings / 1000).toFixed(0)}K</p>
-        </div>
-        <div className="card bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-          <p className="text-purple-100 text-sm font-medium">Total Withdrawn</p>
-          <p className="text-3xl font-bold mt-2">₹{(totalWithdrawn / 100).toFixed(0)}</p>
-        </div>
-        <div className="card bg-gradient-to-br from-yellow-500 to-orange-600 text-white">
-          <p className="text-yellow-100 text-sm font-medium">Est. Profit</p>
-          <p className="text-3xl font-bold mt-2">₹{(estimatedProfit / 100).toFixed(0)}</p>
-        </div>
-        {quizStats && (
-          <div className="card bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-            <p className="text-indigo-100 text-sm font-medium">Quiz Completions</p>
-            <p className="text-3xl font-bold mt-2">{quizStats.totalCompletions}</p>
-            <p className="text-xs text-indigo-200 mt-1">Est. Revenue: ₹{quizStats.estimatedRevenue.toFixed(2)}</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
+        {/* Hero Section */}
+        <div className="text-center mb-4">
+          <div className="relative inline-flex items-center justify-center mb-2">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+            <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+              <Settings className="w-5 h-5 text-white" />
+            </div>
           </div>
-        )}
-      </div>
+          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+            Admin Panel
+          </h1>
+          <p className="text-sm text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            Manage users, withdrawals, offers, and support messages from one central dashboard.
+          </p>
+        </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          {[
-            { id: 'users', label: 'Users', icon: Users },
-            { id: 'withdrawals', label: `Withdrawals (${pendingWithdrawals.length})`, icon: DollarSign },
-            { id: 'support', label: `Support (${pendingSupportMessages.length})`, icon: HelpCircle },
-            { id: 'offers', label: 'Offers', icon: Gift },
-            { id: 'captchas', label: `Captchas (${clientCaptchas.filter(c => c.status === 'pending').length})`, icon: ShieldCheck },
-          ].map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`${
-                activeTab === id
-                  ? 'border-purple-500 text-purple-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center`}
-            >
-              <Icon className="w-5 h-5 mr-2" />
-              {label}
-            </button>
-          ))}
-        </nav>
-      </div>
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+          <div className="bg-gradient-to-br from-blue-500 via-cyan-500 to-indigo-500 rounded-xl shadow-lg p-3 text-white transform hover:scale-[1.02] transition-transform duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+                <Users className="w-4 h-4" />
+              </div>
+              <div className="bg-white/10 rounded-full px-2 py-0.5">
+                <span className="text-xs font-semibold">Users</span>
+              </div>
+            </div>
+            <p className="text-blue-100 text-xs font-medium mb-1">Total Users</p>
+            <p className="text-2xl font-bold">{totalUsers}</p>
+          </div>
+          <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 rounded-xl shadow-lg p-3 text-white transform hover:scale-[1.02] transition-transform duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="bg-white/10 rounded-full px-2 py-0.5">
+                <span className="text-xs font-semibold">Points</span>
+              </div>
+            </div>
+            <p className="text-green-100 text-xs font-medium mb-1">Total Points Given</p>
+            <p className="text-2xl font-bold">{(totalEarnings / 1000).toFixed(0)}K</p>
+          </div>
+          <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl shadow-lg p-3 text-white transform hover:scale-[1.02] transition-transform duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <div className="bg-white/10 rounded-full px-2 py-0.5">
+                <span className="text-xs font-semibold">Withdrawn</span>
+              </div>
+            </div>
+            <p className="text-purple-100 text-xs font-medium mb-1">Total Withdrawn</p>
+            <p className="text-2xl font-bold">₹{(totalWithdrawn / 100).toFixed(0)}</p>
+          </div>
+          <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 rounded-xl shadow-lg p-3 text-white transform hover:scale-[1.02] transition-transform duration-300">
+            <div className="flex items-center justify-between mb-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+              <div className="bg-white/10 rounded-full px-2 py-0.5">
+                <span className="text-xs font-semibold">Profit</span>
+              </div>
+            </div>
+            <p className="text-amber-100 text-xs font-medium mb-1">Est. Profit</p>
+            <p className="text-2xl font-bold">₹{(estimatedProfit / 100).toFixed(0)}</p>
+          </div>
+          {quizStats && (
+            <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-xl shadow-lg p-3 text-white transform hover:scale-[1.02] transition-transform duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+                  <Activity className="w-4 h-4" />
+                </div>
+                <div className="bg-white/10 rounded-full px-2 py-0.5">
+                  <span className="text-xs font-semibold">Quizzes</span>
+                </div>
+              </div>
+              <p className="text-indigo-100 text-xs font-medium mb-1">Quiz Completions</p>
+              <p className="text-2xl font-bold">{quizStats.totalCompletions}</p>
+              <p className="text-xs text-indigo-200 mt-1">Est. Revenue: ₹{quizStats.estimatedRevenue.toFixed(2)}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-2 mb-6">
+          <nav className="flex space-x-2 overflow-x-auto">
+            {[
+              { id: 'users', label: 'Users', icon: Users },
+              { id: 'withdrawals', label: `Withdrawals`, count: pendingWithdrawals.length, icon: DollarSign },
+              { id: 'support', label: `Support`, count: pendingSupportMessages.length, icon: HelpCircle },
+              { id: 'offers', label: 'Offers', icon: Gift },
+              { id: 'captchas', label: `Captchas`, count: clientCaptchas.filter(c => c.status === 'pending').length, icon: ShieldCheck },
+            ].map(({ id, label, icon: Icon, count }) => (
+              <button
+                key={id}
+                onClick={() => {
+                  console.log('Tab clicked:', id);
+                  setActiveTab(id);
+                }}
+                className={`${
+                  activeTab === id
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                } whitespace-nowrap py-3 px-6 rounded-xl font-semibold text-sm flex items-center transition-all duration-200 transform hover:scale-105`}
+              >
+                <Icon className="w-5 h-5 mr-2" />
+                {label}
+                {count !== undefined && count > 0 && (
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${
+                    activeTab === id ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
 
       {/* Tab Content */}
       {activeTab === 'users' && (
@@ -193,6 +356,8 @@ export default function AdminPanel() {
           users={users}
           onBan={handleBanUser}
           onAdjustPoints={handleAdjustPoints}
+          onDisable={handleDisableUser}
+          onDelete={handleDeleteUser}
         />
       )}
 
@@ -206,9 +371,13 @@ export default function AdminPanel() {
 
       {activeTab === 'support' && (
         <SupportMessagesTab
-          messages={supportMessages}
+          messages={supportMessages || []}
           onMarkAsRead={handleMarkAsRead}
+          onMarkAllAsRead={handleMarkAllAsRead}
           onUpdateStatus={handleUpdateStatus}
+          onReply={handleReply}
+          onDelete={handleDeleteMessage}
+          onDeleteReply={handleDeleteReply}
         />
       )}
 
@@ -225,61 +394,93 @@ export default function AdminPanel() {
           onReload={loadData}
         />
       )}
+      </div>
     </div>
   );
 }
 
-function UsersTab({ users, onBan, onAdjustPoints }) {
+function UsersTab({ users, onBan, onAdjustPoints, onDisable, onDelete }) {
   return (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">All Users</h2>
-      <div className="overflow-x-auto">
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 md:p-10">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-3 rounded-xl mr-4">
+            <Users className="w-6 h-6 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800">All Users</h2>
+        </div>
+        <div className="bg-blue-100 rounded-lg px-4 py-2">
+          <span className="text-sm font-semibold text-blue-700">{users.length} users</span>
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Points</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Earned</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Email</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Points</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Earned</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50">
+              <tr key={user.id} className="hover:bg-purple-50 transition-colors duration-150">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {user.name || 'N/A'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                   {user.email}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                   {user.points?.toLocaleString() || 0}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                   ₹{((user.totalEarned || 0) / 10).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                    user.banned ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                  <span className={`px-3 py-1.5 text-xs font-bold rounded-full ${
+                    user.disabled 
+                      ? 'bg-gray-100 text-gray-800' 
+                      : user.banned 
+                      ? 'bg-red-100 text-red-800' 
+                      : 'bg-green-100 text-green-800'
                   }`}>
-                    {user.banned ? 'Banned' : 'Active'}
+                    {user.disabled ? 'Disabled' : user.banned ? 'Banned' : 'Active'}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  <button
-                    onClick={() => onBan(user.id, user.banned)}
-                    className={`${user.banned ? 'text-green-600' : 'text-red-600'} hover:text-opacity-80`}
-                  >
-                    <Ban className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => onAdjustPoints(user.id, user.points || 0)}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    Adjust Points
-                  </button>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => onBan(user.id, user.banned)}
+                      className={`${user.banned ? 'text-green-600 hover:text-green-700' : 'text-red-600 hover:text-red-700'} transition-colors duration-200 p-2 rounded-lg hover:bg-gray-100`}
+                      title={user.banned ? 'Unban User' : 'Ban User'}
+                    >
+                      <Ban className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => onDisable(user.id, user.disabled)}
+                      className={`${user.disabled ? 'text-green-600 hover:text-green-700' : 'text-yellow-600 hover:text-yellow-700'} transition-colors duration-200 p-2 rounded-lg hover:bg-gray-100`}
+                      title={user.disabled ? 'Enable User' : 'Disable User'}
+                    >
+                      <Power className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => onAdjustPoints(user.id, user.points || 0)}
+                      className="text-blue-600 hover:text-blue-800 font-semibold transition-colors duration-200 px-3 py-2 rounded-lg hover:bg-blue-50"
+                    >
+                      Adjust Points
+                    </button>
+                    <button
+                      onClick={() => onDelete(user.id, user.name || user.email)}
+                      className="text-red-600 hover:text-red-700 transition-colors duration-200 p-2 rounded-lg hover:bg-red-50"
+                      title="Delete User Permanently"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -298,24 +499,40 @@ function WithdrawalsTab({ withdrawals, onApprove, onReject }) {
   };
 
   return (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Withdrawal Requests</h2>
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 md:p-10">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-3 rounded-xl mr-4">
+            <DollarSign className="w-6 h-6 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800">Withdrawal Requests</h2>
+        </div>
+        <div className="bg-green-100 rounded-lg px-4 py-2">
+          <span className="text-sm font-semibold text-green-700">{withdrawals.length} requests</span>
+        </div>
+      </div>
       {withdrawals.length === 0 ? (
-        <div className="text-center py-12">
-          <DollarSign className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No withdrawal requests.</p>
+        <div className="text-center py-16">
+          <div className="relative inline-flex items-center justify-center mb-6">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-gray-100 p-6 rounded-2xl">
+              <DollarSign className="w-16 h-16 text-gray-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-lg font-medium mb-2">No withdrawal requests</p>
+          <p className="text-gray-400 text-sm">All withdrawal requests will appear here</p>
         </div>
       ) : (
         <div className="space-y-4">
           {withdrawals.map((withdrawal) => (
             <div
               key={withdrawal.id}
-              className={`border rounded-lg p-4 ${
+              className={`border-2 rounded-xl p-6 hover:shadow-lg transition-all duration-200 ${
                 withdrawal.status === 'pending'
-                  ? 'border-yellow-300 bg-yellow-50'
+                  ? 'border-yellow-300 bg-gradient-to-r from-yellow-50 to-amber-50'
                   : withdrawal.status === 'approved'
-                  ? 'border-green-300 bg-green-50'
-                  : 'border-red-300 bg-red-50'
+                  ? 'border-green-300 bg-gradient-to-r from-green-50 to-emerald-50'
+                  : 'border-red-300 bg-gradient-to-r from-red-50 to-rose-50'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -343,16 +560,16 @@ function WithdrawalsTab({ withdrawals, onApprove, onReject }) {
                     <>
                       <button
                         onClick={() => onApprove(withdrawal.id, withdrawal.userId, withdrawal.amount, withdrawal.points)}
-                        className="btn-primary text-sm py-2 px-4"
+                        className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 text-sm"
                       >
-                        <CheckCircle className="w-5 h-5 inline mr-1" />
+                        <CheckCircle className="w-4 h-4 mr-2" />
                         Approve
                       </button>
                       <button
                         onClick={() => onReject(withdrawal.id, withdrawal.userId, withdrawal.points)}
-                        className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 text-sm"
+                        className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 text-sm"
                       >
-                        <XCircle className="w-5 h-5 inline mr-1" />
+                        <XCircle className="w-4 h-4 mr-2" />
                         Reject
                       </button>
                     </>
@@ -367,16 +584,186 @@ function WithdrawalsTab({ withdrawals, onApprove, onReject }) {
   );
 }
 
-function SupportMessagesTab({ messages, onMarkAsRead, onUpdateStatus }) {
+function SupportMessagesTab({ messages, onMarkAsRead, onMarkAllAsRead, onUpdateStatus, onReply, onDelete, onDeleteReply }) {
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [replyTexts, setReplyTexts] = useState({});
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [deletingMessage, setDeletingMessage] = useState(null);
+  const [deletingReply, setDeletingReply] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Safety check - ensure we have valid handlers first
+  if (!onMarkAsRead || !onUpdateStatus || !onReply || !onDelete) {
+    console.error('SupportMessagesTab: Missing required handlers');
+    return (
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8" style={{ minHeight: '400px' }}>
+        <div className="text-center py-16">
+          <div className="bg-red-100 rounded-full p-6 mb-4 mx-auto w-24 h-24 flex items-center justify-center">
+            <AlertCircle className="w-12 h-12 text-red-600" />
+          </div>
+          <h3 className="text-xl font-semibold text-red-600 mb-2">Configuration Error</h3>
+          <p className="text-sm text-gray-600">Support tab configuration issue. Please refresh the page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // onDeleteReply is optional, but log warning if missing
+  if (!onDeleteReply) {
+    console.warn('SupportMessagesTab: onDeleteReply handler not provided. Reply deletion will not work.');
+  }
+
+  // Group messages by user
+  const usersMap = new Map();
+  const safeMessages = Array.isArray(messages) ? messages : [];
+  
+  // Debug log
+  console.log('SupportMessagesTab rendered with messages:', safeMessages.length);
+  
+  // Process messages safely
+  safeMessages.forEach((msg) => {
+    if (!msg || !msg.userId) return; // Skip invalid messages
+    
+    try {
+      if (!usersMap.has(msg.userId)) {
+        usersMap.set(msg.userId, {
+          userId: msg.userId,
+          userName: msg.userName || 'Unknown User',
+          userEmail: msg.userEmail || 'No Email',
+          messages: [],
+          unreadCount: 0,
+          lastMessageTime: msg.createdAt || new Date(),
+        });
+      }
+      const userData = usersMap.get(msg.userId);
+      if (userData) {
+        userData.messages.push(msg);
+        if (!msg.read) userData.unreadCount++;
+        try {
+          const msgTime = msg.createdAt?.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt || Date.now());
+          const lastTime = userData.lastMessageTime?.toDate ? userData.lastMessageTime.toDate() : new Date(userData.lastMessageTime || Date.now());
+          if (msgTime > lastTime) {
+            userData.lastMessageTime = msg.createdAt;
+          }
+        } catch (err) {
+          console.warn('Error processing message timestamp:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Error processing message:', err);
+    }
+  });
+
+  const usersList = Array.from(usersMap.values()).sort((a, b) => {
+    const timeA = a.lastMessageTime?.toDate ? a.lastMessageTime.toDate() : new Date(a.lastMessageTime);
+    const timeB = b.lastMessageTime?.toDate ? b.lastMessageTime.toDate() : new Date(b.lastMessageTime);
+    return timeB - timeA;
+  });
+
+  const filteredUsersList = usersList.filter(user => 
+    user.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.userEmail.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Auto-select first user if none selected
+  useEffect(() => {
+    if (!selectedUserId && filteredUsersList.length > 0) {
+      setSelectedUserId(filteredUsersList[0].userId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeMessages.length]);
+
+  // Get selected user's messages
+  const selectedUser = usersMap.get(selectedUserId);
+  const selectedUserMessages = selectedUser ? selectedUser.messages : [];
+
+  // Build timeline for selected user
+  const buildTimeline = (userMessages) => {
+    const timeline = [];
+    userMessages.forEach((msg) => {
+      timeline.push({
+        id: msg.id,
+        type: 'user',
+        text: msg.message,
+        subject: msg.subject,
+        timestamp: msg.createdAt,
+        status: msg.status,
+        read: msg.read,
+        messageId: msg.id,
+      });
+      
+      if (msg.replies && msg.replies.length > 0) {
+        msg.replies.forEach((reply, index) => {
+          timeline.push({
+            id: `${msg.id}-reply-${index}`,
+            type: 'admin',
+            text: reply.text,
+            author: reply.author || 'Support Team',
+            timestamp: reply.createdAt,
+            messageId: msg.id,
+            replyIndex: index, // Store the index for deletion
+          });
+        });
+      }
+    });
+    
+    timeline.sort((a, b) => {
+      const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+      const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+      return dateA - dateB;
+    });
+    
+    return timeline;
+  };
+
+  const chatTimeline = selectedUser ? buildTimeline(selectedUserMessages) : [];
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    scrollToBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatTimeline.length, selectedUserId]);
+
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return 'N/A';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : (timestamp instanceof Date ? timestamp : new Date(timestamp));
+      const now = new Date();
+      const diff = now - date;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days < 7) return `${days}d ago`;
     return date.toLocaleString();
+    } catch (err) {
+      return 'N/A';
+    }
+  };
+
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : (timestamp instanceof Date ? timestamp : new Date(timestamp));
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    } catch (err) {
+      return '';
+    }
   };
 
   const getStatusColor = (status, read) => {
     if (!read) return 'bg-blue-100 text-blue-800';
     switch (status) {
+      case 'sent': return 'bg-blue-100 text-blue-800';
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'read': return 'bg-blue-100 text-blue-800';
       case 'replied': return 'bg-green-100 text-green-800';
@@ -385,77 +772,366 @@ function SupportMessagesTab({ messages, onMarkAsRead, onUpdateStatus }) {
     }
   };
 
+  const handleReplySubmit = async (messageId) => {
+    const replyText = replyTexts[messageId] || '';
+    if (!replyText.trim()) {
+      alert('Please enter a reply message.');
+      return;
+    }
+
+    setReplyingTo(messageId);
+    try {
+      await onReply(messageId, replyText);
+      setReplyTexts({ ...replyTexts, [messageId]: '' });
+      inputRef.current?.focus();
+    } catch (err) {
+      console.error('Reply error:', err);
+    } finally {
+      setReplyingTo(null);
+    }
+  };
+
+  const handleQuickReply = async (userId) => {
+    if (!selectedUserId) return;
+    const latestMessage = selectedUserMessages[selectedUserMessages.length - 1];
+    if (latestMessage && replyTexts[latestMessage.id]) {
+      await handleReplySubmit(latestMessage.id);
+    }
+  };
+
+  // Get latest message for quick reply
+  const latestMessage = selectedUserMessages.length > 0 
+    ? selectedUserMessages[selectedUserMessages.length - 1] 
+    : null;
+
+
+  // Show empty state if no messages at all
+  if (safeMessages.length === 0) {
   return (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Support Messages</h2>
-      {messages.length === 0 ? (
-        <div className="text-center py-12">
-          <MessageSquare className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No support messages yet.</p>
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8" style={{ minHeight: '400px' }}>
+        <div className="flex flex-col items-center justify-center h-full text-center py-16">
+          <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-full p-6 mb-4">
+            <MessageSquare className="w-16 h-16 text-purple-600" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">No support messages yet</h3>
+          <p className="text-sm text-gray-500 max-w-md">When users send messages through Help & Support, they will appear here.</p>
+        </div>
+        </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden" style={{ height: 'calc(100vh - 250px)', minHeight: '700px' }}>
+      <div className="flex h-full">
+        {/* Left Sidebar - User List */}
+        <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
+          {/* Sidebar Header */}
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-4 border-b border-indigo-500">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="bg-white/20 rounded-full p-2">
+                <MessageSquare className="w-5 h-5 text-white" />
+      </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Support Chats</h2>
+                <p className="text-xs text-indigo-100">{filteredUsersList.length} conversations</p>
+            </div>
+          </div>
+            {/* Search Bar */}
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search users..."
+                className="w-full px-3 py-2 pl-9 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/70 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
+              />
+              <div className="absolute left-3 top-2.5">
+                <MessageSquare className="w-4 h-4 text-white/70" />
+              </div>
+            </div>
+          </div>
+
+          {/* User List */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredUsersList.length === 0 ? (
+              <div className="text-center py-8 px-4">
+                <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">No users found</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`border rounded-lg p-5 ${
-                !message.read 
-                  ? 'border-blue-300 bg-blue-50' 
-                  : message.status === 'pending'
-                  ? 'border-yellow-300 bg-yellow-50'
-                  : 'border-gray-300 bg-white'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-800">{message.subject}</h3>
-                    {!message.read && (
-                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-600 text-white">
-                        New
+              <div className="divide-y divide-gray-200">
+                {filteredUsersList.map((user) => {
+                  const lastMsg = user.messages[user.messages.length - 1];
+                  const isSelected = selectedUserId === user.userId;
+                  return (
+                    <button
+                      key={user.userId}
+                      onClick={async () => {
+                        setSelectedUserId(user.userId);
+                        // Mark all unread messages from this user as read when chat is opened
+                        if (user.unreadCount > 0 && onMarkAllAsRead) {
+                          await onMarkAllAsRead(user.userId);
+                        }
+                      }}
+                      className={`w-full px-4 py-3 text-left hover:bg-gray-100 transition-all ${
+                        isSelected ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                          <User className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-sm font-semibold text-gray-800 truncate">{user.userName}</h3>
+                            {user.unreadCount > 0 && (
+                              <span className="bg-blue-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                                {user.unreadCount}
                       </span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 space-y-1">
-                    <p><strong>From:</strong> {message.userName} ({message.userEmail})</p>
-                    <p><strong>User ID:</strong> {message.userId}</p>
-                    <p><strong>Date:</strong> {formatTimestamp(message.createdAt)}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {lastMsg ? lastMsg.message.substring(0, 50) + (lastMsg.message.length > 50 ? '...' : '') : 'No messages'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {lastMsg ? formatTimestamp(lastMsg.createdAt) : ''}
+                          </p>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(message.status, message.read)}`}>
-                    {message.read ? message.status : 'Unread'}
-                  </span>
-                  <div className="flex gap-2">
-                    {!message.read && (
-                      <button
-                        onClick={() => onMarkAsRead(message.id)}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                      >
-                        Mark Read
                       </button>
-                    )}
-                    <select
-                      value={message.status}
-                      onChange={(e) => onUpdateStatus(message.id, e.target.value)}
-                      className="px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="read">Read</option>
-                      <option value="replied">Replied</option>
-                      <option value="resolved">Resolved</option>
-                    </select>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Middle - Chat Area */}
+        <div className="flex-1 flex flex-col bg-white">
+          {selectedUser ? (
+            <>
+              {/* Chat Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between border-b border-blue-500">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center">
+                    <User className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">{selectedUser.userName}</h3>
+                    <p className="text-xs text-blue-100">{selectedUser.userEmail}</p>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  {latestMessage && (
+                    <select
+                      value={latestMessage.status}
+                      onChange={(e) => onUpdateStatus(latestMessage.id, e.target.value)}
+                      className="px-3 py-1.5 text-xs border border-white/30 rounded-lg bg-white/20 text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="sent" className="text-gray-800">Sent</option>
+                      <option value="pending" className="text-gray-800">Pending</option>
+                      <option value="read" className="text-gray-800">Read</option>
+                      <option value="replied" className="text-gray-800">Replied</option>
+                      <option value="resolved" className="text-gray-800">Resolved</option>
+                    </select>
+                  )}
+                  {latestMessage && (
+                    <button
+                      onClick={async () => {
+                        if (window.confirm('Are you sure you want to delete this conversation?')) {
+                          setDeletingMessage(latestMessage.id);
+                        try {
+                            await onDelete(latestMessage.id);
+                          } finally {
+                            setDeletingMessage(null);
+                          }
+                        }
+                      }}
+                      disabled={deletingMessage === latestMessage.id}
+                      className="p-2 text-white hover:bg-white/20 rounded-lg transition-all disabled:opacity-50"
+                      title="Delete conversation"
+                    >
+                      {deletingMessage === latestMessage.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
+                  </div>
+                </div>
+
+              {/* Messages Area */}
+              <div className="flex-1 overflow-y-auto p-4 bg-gray-50" style={{ maxHeight: 'calc(100% - 140px)' }}>
+                {chatTimeline.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full p-6 mb-4">
+                      <MessageSquare className="w-12 h-12 text-blue-600" />
               </div>
-              
-              <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
-                <p className="text-gray-700 whitespace-pre-wrap">{message.message}</p>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2">No messages yet</h3>
+                    <p className="text-sm text-gray-500">Start the conversation with {selectedUser.userName}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {chatTimeline.map((item, index) => {
+                      const showDateSeparator = index === 0 || 
+                        (chatTimeline[index - 1] && 
+                         new Date(item.timestamp).toDateString() !== new Date(chatTimeline[index - 1].timestamp).toDateString());
+                      
+                      return (
+                        <div key={item.id}>
+                          {showDateSeparator && (
+                            <div className="flex items-center justify-center my-4">
+                              <span className="bg-white px-3 py-1 rounded-full text-xs text-gray-500 border border-gray-200">
+                                {new Date(item.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                              </span>
               </div>
+                          )}
+                          
+                          {item.type === 'user' ? (
+                            <div className="flex items-end justify-end gap-2 mb-2 group">
+                              <div className="max-w-[70%] lg:max-w-[60%]">
+                                <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl rounded-tr-none px-4 py-2.5 shadow-md relative">
+                                  {item.subject && (
+                                    <div className="font-semibold text-sm mb-1">{item.subject}</div>
+                                  )}
+                                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{item.text}</p>
+                                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/20">
+                                    <button
+                                      onClick={async () => {
+                                        if (window.confirm('Are you sure you want to delete this message? This will delete the entire conversation.')) {
+                                          setDeletingMessage(item.messageId);
+                                          try {
+                                            await onDelete(item.messageId);
+                                          } finally {
+                                            setDeletingMessage(null);
+                                          }
+                                        }
+                                      }}
+                                      disabled={deletingMessage === item.messageId}
+                                      className="p-1 hover:bg-white/20 rounded transition-all disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                                      title="Delete message"
+                                    >
+                                      {deletingMessage === item.messageId ? (
+                                        <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-white"></div>
+                                      ) : (
+                                        <Trash2 className="w-3 h-3 text-white" />
+                                      )}
+                                    </button>
+                                    <span className="text-xs opacity-75">{formatTime(item.timestamp)}</span>
             </div>
-          ))}
+                                </div>
+                              </div>
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                                <User className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-end justify-start gap-2 mb-2 group">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-indigo-400 flex items-center justify-center flex-shrink-0">
+                                <Shield className="w-4 h-4 text-white" />
+                              </div>
+                              <div className="max-w-[70%] lg:max-w-[60%]">
+                                <div className="bg-white rounded-2xl rounded-tl-none px-4 py-2.5 shadow-md border border-gray-200 relative">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-semibold text-blue-600">{item.author}</span>
+                                      <span className="text-xs text-gray-400">{formatTime(item.timestamp)}</span>
+                                    </div>
+                                    {onDeleteReply && item.replyIndex !== undefined && (
+                                      <button
+                                        onClick={async () => {
+                                          if (window.confirm('Are you sure you want to delete this reply?')) {
+                                            setDeletingReply(`${item.messageId}-${item.replyIndex}`);
+                                            try {
+                                              await onDeleteReply(item.messageId, item.replyIndex);
+                                            } finally {
+                                              setDeletingReply(null);
+                                            }
+                                          }
+                                        }}
+                                        disabled={deletingReply === `${item.messageId}-${item.replyIndex}`}
+                                        className="p-1 hover:bg-red-50 rounded transition-all disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                                        title="Delete reply"
+                                      >
+                                        {deletingReply === `${item.messageId}-${item.replyIndex}` ? (
+                                          <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-red-600"></div>
+                                        ) : (
+                                          <Trash2 className="w-3 h-3 text-red-600" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{item.text}</p>
+                                </div>
+                              </div>
         </div>
       )}
+                        </div>
+                      );
+                    })}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              {/* Reply Input */}
+              {latestMessage && (
+                <div className="border-t border-gray-200 bg-white p-4">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleReplySubmit(latestMessage.id);
+                    }}
+                    className="flex items-end gap-3"
+                  >
+                    <div className="flex-1 relative">
+                      <textarea
+                        ref={inputRef}
+                        value={replyTexts[latestMessage.id] || ''}
+                        onChange={(e) => setReplyTexts({ ...replyTexts, [latestMessage.id]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleReplySubmit(latestMessage.id);
+                          }
+                        }}
+                        placeholder="Type your reply here... (Press Enter to send, Shift+Enter for new line)"
+                        rows={1}
+                        className="w-full px-4 py-3 pr-12 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none bg-gray-50 focus:bg-white transition-all text-sm"
+                        disabled={replyingTo === latestMessage.id}
+                        style={{ minHeight: '48px', maxHeight: '120px' }}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={replyingTo === latestMessage.id || !replyTexts[latestMessage.id]?.trim()}
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center"
+                    >
+                      {replyingTo === latestMessage.id ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-gray-50">
+              <div className="text-center">
+                <div className="bg-gradient-to-r from-gray-200 to-gray-300 rounded-full p-8 mb-4 mx-auto w-32 h-32 flex items-center justify-center">
+                  <MessageSquare className="w-16 h-16 text-gray-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">Select a user to start chatting</h3>
+                <p className="text-sm text-gray-500">Choose a user from the left sidebar to view and reply to their messages</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -465,6 +1141,8 @@ function OffersTab({ offers, onReload }) {
   const [showOfferToroConfig, setShowOfferToroConfig] = useState(false);
   const [showInstantNetworkConfig, setShowInstantNetworkConfig] = useState(false);
   const [showCPALeadConfig, setShowCPALeadConfig] = useState(false);
+  const [showPropellerAdsConfig, setShowPropellerAdsConfig] = useState(false);
+  const [showPopAdsConfig, setShowPopAdsConfig] = useState(false);
   const [showCaptchaConfig, setShowCaptchaConfig] = useState(false);
   const [showAyetStudiosConfig, setShowAyetStudiosConfig] = useState(false);
   const [showCPXResearchConfig, setShowCPXResearchConfig] = useState(false);
@@ -485,9 +1163,14 @@ function OffersTab({ offers, onReload }) {
   const [hideoutTvApiKey, setHideoutTvApiKey] = useState('');
   const [hideoutTvOfferwallUrl, setHideoutTvOfferwallUrl] = useState('');
   const [cpaleadPublisherId, setCPALeadPublisherId] = useState('');
+  const [cpaleadCustomAdUrl, setCPALeadCustomAdUrl] = useState('');
   const [cpaleadLinkLockerUrl, setCPALeadLinkLockerUrl] = useState('');
   const [cpaleadFileLockerUrl, setCPALeadFileLockerUrl] = useState('');
   const [cpaleadQuizUrl, setCPALeadQuizUrl] = useState('');
+  const [propellerAdsBannerZoneId, setPropellerAdsBannerZoneId] = useState('');
+  const [propellerAdsInterstitialZoneId, setPropellerAdsInterstitialZoneId] = useState('');
+  const [popAdsSiteId, setPopAdsSiteId] = useState('');
+  const [popAdsBannerId, setPopAdsBannerId] = useState('');
   const [captchaPointsPerSolve, setCaptchaPointsPerSolve] = useState(1);
   const [syncing, setSyncing] = useState(false);
   
@@ -497,7 +1180,10 @@ function OffersTab({ offers, onReload }) {
   const [surveySources, setSurveySources] = useState([]);
   const [videoSources, setVideoSources] = useState([]);
   const [appSources, setAppSources] = useState([]);
+  const [cpaleadIndividualOffers, setCPALeadIndividualOffers] = useState([]);
   const [newSource, setNewSource] = useState({ type: 'quiz', name: '', url: '', source: '' });
+  const [newCPALeadOffer, setNewCPALeadOffer] = useState({ name: '', url: '', category: 'all' });
+  const [showCPALeadIndividualOffers, setShowCPALeadIndividualOffers] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -521,9 +1207,14 @@ function OffersTab({ offers, onReload }) {
         setInstantNetwork(settings.instantNetwork || '');
         setInstantNetworkApiKey(settings.instantNetworkApiKey || '');
         setCPALeadPublisherId(settings.cpaleadPublisherId || '');
+        setCPALeadCustomAdUrl(settings.cpaleadCustomAdUrl || '');
         setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
         setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
         setCPALeadQuizUrl(settings.cpaleadQuizUrl || '');
+        setPropellerAdsBannerZoneId(settings.propellerAdsBannerZoneId || '');
+        setPropellerAdsInterstitialZoneId(settings.propellerAdsInterstitialZoneId || '');
+        setPopAdsSiteId(settings.popAdsSiteId || '');
+        setPopAdsBannerId(settings.popAdsBannerId || '');
         setAyetStudiosApiKey(settings.ayetStudiosApiKey || '');
         setAyetStudiosOfferwallUrl(settings.ayetStudiosOfferwallUrl || '');
         setCpxResearchApiKey(settings.cpxResearchApiKey || '');
@@ -540,6 +1231,7 @@ function OffersTab({ offers, onReload }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
+        setCPALeadIndividualOffers(settings.cpaleadIndividualOffers || []);
         setCaptchaPointsPerSolve(settings.captchaPointsPerSolve || 1);
         
         // Also sync to localStorage for backward compatibility
@@ -547,9 +1239,14 @@ function OffersTab({ offers, onReload }) {
         if (settings.instantNetwork) localStorage.setItem('instant_network', settings.instantNetwork);
         if (settings.instantNetworkApiKey) localStorage.setItem('instant_network_api_key', settings.instantNetworkApiKey);
         if (settings.cpaleadPublisherId) localStorage.setItem('cpalead_publisher_id', settings.cpaleadPublisherId);
+        if (settings.cpaleadCustomAdUrl) localStorage.setItem('cpalead_custom_ad_url', settings.cpaleadCustomAdUrl);
         if (settings.cpaleadLinkLockerUrl) localStorage.setItem('cpalead_link_locker_url', settings.cpaleadLinkLockerUrl);
         if (settings.cpaleadFileLockerUrl) localStorage.setItem('cpalead_file_locker_url', settings.cpaleadFileLockerUrl);
         if (settings.cpaleadQuizUrl) localStorage.setItem('cpalead_quiz_url', settings.cpaleadQuizUrl);
+        if (settings.propellerAdsBannerZoneId) localStorage.setItem('propeller_ads_banner_zone_id', settings.propellerAdsBannerZoneId);
+        if (settings.propellerAdsInterstitialZoneId) localStorage.setItem('propeller_ads_interstitial_zone_id', settings.propellerAdsInterstitialZoneId);
+        if (settings.popAdsSiteId) localStorage.setItem('popads_site_id', settings.popAdsSiteId);
+        if (settings.popAdsBannerId) localStorage.setItem('popads_banner_id', settings.popAdsBannerId);
         if (settings.ayetStudiosApiKey) localStorage.setItem('ayet_studios_api_key', settings.ayetStudiosApiKey);
         if (settings.ayetStudiosOfferwallUrl) localStorage.setItem('ayet_studios_offerwall_url', settings.ayetStudiosOfferwallUrl);
         if (settings.cpxResearchApiKey) localStorage.setItem('cpx_research_api_key', settings.cpxResearchApiKey);
@@ -584,10 +1281,20 @@ function OffersTab({ offers, onReload }) {
         const savedAdgemUrl = localStorage.getItem('adgem_offerwall_url') || '';
         const savedHideoutTvApiKey = localStorage.getItem('hideout_tv_api_key') || '';
         const savedHideoutTvUrl = localStorage.getItem('hideout_tv_offerwall_url') || '';
+        const savedCustomAd = localStorage.getItem('cpalead_custom_ad_url') || '';
+        const savedPropellerBanner = localStorage.getItem('propeller_ads_banner_zone_id') || '';
+        const savedPropellerInterstitial = localStorage.getItem('propeller_ads_interstitial_zone_id') || '';
+        const savedPopAdsSite = localStorage.getItem('popads_site_id') || '';
+        const savedPopAdsBanner = localStorage.getItem('popads_banner_id') || '';
         setCPALeadPublisherId(savedCPALeadId);
+        setCPALeadCustomAdUrl(savedCustomAd);
         setCPALeadLinkLockerUrl(savedLinkLocker);
         setCPALeadFileLockerUrl(savedFileLocker);
         setCPALeadQuizUrl(savedQuiz);
+        setPropellerAdsBannerZoneId(savedPropellerBanner);
+        setPropellerAdsInterstitialZoneId(savedPropellerInterstitial);
+        setPopAdsSiteId(savedPopAdsSite);
+        setPopAdsBannerId(savedPopAdsBanner);
         setAyetStudiosApiKey(savedAyetApiKey);
         setAyetStudiosOfferwallUrl(savedAyetUrl);
         setCpxResearchApiKey(savedCpxApiKey);
@@ -665,34 +1372,39 @@ function OffersTab({ offers, onReload }) {
   };
 
   return (
-    <div className="card">
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 md:p-10">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Offers & Tasks</h2>
-        <div className="flex gap-3">
+        <div className="flex items-center">
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-3 rounded-xl mr-4">
+            <Gift className="w-6 h-6 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800">Offers & Tasks</h2>
+        </div>
+        <div className="flex gap-3 flex-wrap">
           <button
             onClick={() => setShowInstantNetworkConfig(!showInstantNetworkConfig)}
-            className="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 flex items-center"
+            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
           >
             <Gift className="w-5 h-5 mr-2" />
             Instant Networks
           </button>
           <button
             onClick={() => setShowOfferToroConfig(!showOfferToroConfig)}
-            className="bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 flex items-center"
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
           >
             <Gift className="w-5 h-5 mr-2" />
             OfferToro
           </button>
           <button
             onClick={() => setShowAyetStudiosConfig(!showAyetStudiosConfig)}
-            className="bg-gradient-to-r from-red-600 to-orange-600 text-white py-2 px-4 rounded-lg hover:from-red-700 hover:to-orange-700 flex items-center"
+            className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
           >
             <PlayCircle className="w-5 h-5 mr-2" />
             Ayet Studios (Videos)
           </button>
           <button
             onClick={() => setShowCPXResearchConfig(!showCPXResearchConfig)}
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-indigo-700 hover:to-purple-700 flex items-center"
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
           >
             <FileText className="w-5 h-5 mr-2" />
             CPX Research (Surveys)
@@ -724,6 +1436,27 @@ function OffersTab({ offers, onReload }) {
           >
             <Gift className="w-5 h-5 mr-2" />
             CPAlead VIP
+          </button>
+          <button
+            onClick={() => setShowCPALeadIndividualOffers(!showCPALeadIndividualOffers)}
+            className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-2 px-4 rounded-lg hover:from-purple-700 hover:to-indigo-700 flex items-center"
+          >
+            <Gift className="w-5 h-5 mr-2" />
+            CPAlead Individual Offers
+          </button>
+          <button
+            onClick={() => setShowPropellerAdsConfig(!showPropellerAdsConfig)}
+            className="bg-gradient-to-r from-orange-600 to-red-600 text-white py-2 px-4 rounded-lg hover:from-orange-700 hover:to-red-700 flex items-center"
+          >
+            <PlayCircle className="w-5 h-5 mr-2" />
+            PropellerAds
+          </button>
+          <button
+            onClick={() => setShowPopAdsConfig(!showPopAdsConfig)}
+            className="bg-gradient-to-r from-green-600 to-teal-600 text-white py-2 px-4 rounded-lg hover:from-green-700 hover:to-teal-700 flex items-center"
+          >
+            <PlayCircle className="w-5 h-5 mr-2" />
+            PopAds (Easy Setup)
           </button>
           <button
             onClick={() => setShowMultiSourceConfig(!showMultiSourceConfig)}
@@ -891,6 +1624,429 @@ function OffersTab({ offers, onReload }) {
         </div>
       )}
 
+      {/* PopAds Configuration - EASIER THAN PROPELLERADS */}
+      {showPopAdsConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-teal-50 rounded-lg border-2 border-green-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <PlayCircle className="w-6 h-6 mr-2 text-green-600" />
+            PopAds Integration (Recommended - Easy Setup!)
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            <strong>✅ MUCH EASIER than PropellerAds!</strong> Just need Site ID and Banner ID.
+            <br /><strong>💰 Revenue:</strong> Earn money from popunder/interstitial ads (CPM-based).
+            <br /><strong>📝 How to get your IDs:</strong>
+            <br />1. Sign up at <a href="https://www.popads.net" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">popads.net</a>
+            <br />2. Go to "Sites" → Add your website
+            <br />3. After approval, go to "Sites" → Click on your site
+            <br />4. You'll see "Site ID" and "Banner ID" - copy them
+            <br />5. Paste them here
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <span className="text-green-600 font-bold">⭐ PopAds Site ID</span>
+              </label>
+              <input
+                type="text"
+                value={popAdsSiteId}
+                onChange={(e) => setPopAdsSiteId(e.target.value.trim())}
+                placeholder="Enter Site ID (e.g., 1234567)"
+                className="w-full px-4 py-2 border-2 border-green-300 rounded-lg focus:border-green-500"
+              />
+              <p className="text-xs text-green-600 mt-1 font-semibold">
+                💡 Get this from: PopAds Dashboard → Sites → Your Website → Site ID
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <span className="text-green-600 font-bold">⭐ PopAds Banner ID (For Watch Ad)</span>
+              </label>
+              <input
+                type="text"
+                value={popAdsBannerId}
+                onChange={(e) => setPopAdsBannerId(e.target.value.trim())}
+                placeholder="Enter Banner ID (e.g., 8765432)"
+                className="w-full px-4 py-2 border-2 border-green-300 rounded-lg focus:border-green-500"
+              />
+              <p className="text-xs text-green-600 mt-1 font-semibold">
+                💡 Get this from: PopAds Dashboard → Sites → Your Website → Banner ID
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will show popunder/interstitial ads in the Watch Ad feature, generating revenue from views!
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!popAdsSiteId && !popAdsBannerId) {
+                    alert('Please enter at least one ID (Site ID or Banner ID)');
+                    return;
+                  }
+                  
+                  const settingsToSave = {};
+                  if (popAdsSiteId) {
+                    settingsToSave.popAdsSiteId = popAdsSiteId;
+                  }
+                  if (popAdsBannerId) {
+                    settingsToSave.popAdsBannerId = popAdsBannerId;
+                  }
+                  
+                  // Preserve existing settings
+                  const currentSettings = await getAdminSettings();
+                  if (currentSettings.success && currentSettings.settings) {
+                    Object.keys(currentSettings.settings).forEach(key => {
+                      if (!settingsToSave.hasOwnProperty(key) && key !== 'updatedAt') {
+                        settingsToSave[key] = currentSettings.settings[key];
+                      }
+                    });
+                  }
+                  
+                  const result = await updateAdminSettings(settingsToSave);
+                  
+                  // Also save to localStorage
+                  if (popAdsSiteId) {
+                    localStorage.setItem('popads_site_id', popAdsSiteId);
+                  }
+                  if (popAdsBannerId) {
+                    localStorage.setItem('popads_banner_id', popAdsBannerId);
+                  }
+                  
+                  let message = `✅ PopAds configured successfully!\n\n`;
+                  if (popAdsSiteId) {
+                    message += `✅ Site ID configured - PopAds ready\n\n`;
+                  }
+                  if (popAdsBannerId) {
+                    message += `✅ Watch Ad feature will show popunder/interstitial ads\n\n`;
+                  }
+                  message += `💰 Revenue: You'll earn money from ad views/impressions!`;
+                  
+                  if (!result.success) {
+                    message = `⚠️ Saved locally. Error: ${result.error}\n\n${message}`;
+                  }
+                  
+                  alert(message);
+                  setShowPopAdsConfig(false);
+                  onReload();
+                }}
+                className="btn-primary flex items-center bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
+              >
+                Enable PopAds
+              </button>
+              <button
+                onClick={() => setShowPopAdsConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            
+            {popAdsSiteId && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-800">
+                  ✓ Site ID configured. PopAds ready to use.
+                </p>
+              </div>
+            )}
+            {popAdsBannerId && (
+              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-800">
+                  ✓ Banner ID configured. Watch Ad feature will show popunder/interstitial ads.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CPAlead Individual Offers Configuration */}
+      {showCPALeadIndividualOffers && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border-2 border-purple-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <Gift className="w-6 h-6 mr-2 text-purple-600" />
+            CPAlead Individual Offers Manager
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Add individual CPAlead offer links manually. Copy each offer link from CPAlead dashboard and paste here.
+            <br /><strong>💰 Revenue:</strong> Earn money when users complete offers (CPA model).
+            <br /><strong>📝 Steps:</strong>
+            <br />1. Go to CPAlead Dashboard → All Offers
+            <br />2. Click on any offer (Minecraft, Roblox, GTA 5, Fortnite, etc.)
+            <br />3. Click "Copy Link" button
+            <br />4. Paste the link here with a name and select category
+            <br />5. Save - offers will appear in the selected category on Tasks page
+          </p>
+          
+          {/* Add New Offer Form */}
+          <div className="mb-6 p-4 bg-white rounded-lg border border-purple-200">
+            <h4 className="font-semibold text-gray-800 mb-3">Add New CPAlead Offer</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Offer Name</label>
+                <input
+                  type="text"
+                  value={newCPALeadOffer.name}
+                  onChange={(e) => setNewCPALeadOffer({ ...newCPALeadOffer, name: e.target.value })}
+                  placeholder="e.g., Smooth Gui Minecraft"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Offer URL (Copy Link from CPAlead)</label>
+                <input
+                  type="text"
+                  value={newCPALeadOffer.url}
+                  onChange={(e) => setNewCPALeadOffer({ ...newCPALeadOffer, url: e.target.value })}
+                  placeholder="https://cpalead.com/offer/..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={newCPALeadOffer.category}
+                  onChange={(e) => setNewCPALeadOffer({ ...newCPALeadOffer, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="all">All Tasks</option>
+                  <option value="games">Game Tasks</option>
+                  <option value="quizzes">Quizzes</option>
+                  <option value="surveys">Surveys</option>
+                  <option value="videos">Watch Videos</option>
+                  <option value="apps">Install Apps</option>
+                </select>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (!newCPALeadOffer.url || !newCPALeadOffer.name) {
+                  alert('Please fill in Offer Name and URL');
+                  return;
+                }
+                setCPALeadIndividualOffers([...cpaleadIndividualOffers, { ...newCPALeadOffer, id: Date.now() }]);
+                setNewCPALeadOffer({ name: '', url: '', category: 'all' });
+              }}
+              className="mt-3 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700"
+            >
+              Add Offer
+            </button>
+          </div>
+
+          {/* Display Current Offers */}
+          <div className="mb-4">
+            <h4 className="font-semibold text-gray-800 mb-3">Current Offers ({cpaleadIndividualOffers.length})</h4>
+            {cpaleadIndividualOffers.length === 0 ? (
+              <p className="text-gray-500 text-sm">No offers added yet. Add your first offer above!</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {cpaleadIndividualOffers.map((offer, index) => (
+                  <div key={offer.id || index} className="bg-white rounded-lg border border-purple-200 p-3 flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-800">{offer.name}</span>
+                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-semibold">
+                          {offer.category === 'all' ? 'All Tasks' : offer.category === 'games' ? 'Game Tasks' : offer.category === 'quizzes' ? 'Quizzes' : offer.category === 'surveys' ? 'Surveys' : offer.category === 'videos' ? 'Videos' : 'Apps'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate mt-1">{offer.url}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCPALeadIndividualOffers(cpaleadIndividualOffers.filter((_, i) => i !== index));
+                      }}
+                      className="ml-3 bg-red-500 text-white py-1 px-3 rounded text-xs hover:bg-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Save Button */}
+          <div className="flex gap-3">
+            <button
+              onClick={async () => {
+                // Preserve existing settings when saving
+                const currentSettings = await getAdminSettings();
+                let settingsToSave = {};
+                
+                if (currentSettings.success && currentSettings.settings) {
+                  // Keep all existing settings
+                  settingsToSave = { ...currentSettings.settings };
+                }
+                
+                // Update with new offers
+                settingsToSave.cpaleadIndividualOffers = cpaleadIndividualOffers;
+                
+                console.log('💾 Saving CPAlead Individual Offers:', cpaleadIndividualOffers);
+                console.log('💾 Full settings to save:', settingsToSave);
+                
+                const result = await updateAdminSettings(settingsToSave);
+                
+                if (result.success) {
+                  alert(`✅ ${cpaleadIndividualOffers.length} CPAlead offers saved successfully! They will appear in the selected categories on the Tasks page.`);
+                  setShowCPALeadIndividualOffers(false);
+                  onReload();
+                } else {
+                  alert(`⚠️ Failed to save: ${result.error}`);
+                }
+              }}
+              className="btn-primary flex items-center bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+            >
+              Save All Offers
+            </button>
+            <button
+              onClick={() => setShowCPALeadIndividualOffers(false)}
+              className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* PropellerAds Configuration */}
+      {showPropellerAdsConfig && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border-2 border-orange-200">
+          <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+            <PlayCircle className="w-6 h-6 mr-2 text-orange-600" />
+            PropellerAds Integration
+          </h3>
+          <p className="text-gray-600 mb-4 text-sm">
+            Integrate PropellerAds for <strong>Banner Ads</strong> and <strong>Watch Ad</strong> feature.
+            <br /><strong>💰 Revenue:</strong> Earn money from ad views/impressions (CPM-based).
+            <br />To get your Zone IDs:
+            <br />1. Go to PropellerAds Dashboard → Zone Groups
+            <br />2. Create a Banner zone (for banner ads)
+            <br />3. Create an Interstitial zone (for watch ad feature)
+            <br />4. Copy the Zone ID from each zone
+            <br />5. Paste them here
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <span className="text-orange-600 font-bold">⭐ PropellerAds Banner Zone ID</span>
+              </label>
+              <input
+                type="text"
+                value={propellerAdsBannerZoneId}
+                onChange={(e) => setPropellerAdsBannerZoneId(e.target.value.trim())}
+                placeholder="Enter Banner Zone ID (e.g., 12345678)"
+                className="w-full px-4 py-2 border-2 border-orange-300 rounded-lg focus:border-orange-500"
+              />
+              <p className="text-xs text-orange-600 mt-1 font-semibold">
+                💡 Get this from: PropellerAds Dashboard → Zone Groups → Create Banner Zone → Copy Zone ID
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will show banner ads at the bottom of every page
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <span className="text-orange-600 font-bold">⭐ PropellerAds Interstitial Zone ID (For Watch Ad)</span>
+              </label>
+              <input
+                type="text"
+                value={propellerAdsInterstitialZoneId}
+                onChange={(e) => setPropellerAdsInterstitialZoneId(e.target.value.trim())}
+                placeholder="Enter Interstitial Zone ID (e.g., 87654321)"
+                className="w-full px-4 py-2 border-2 border-orange-300 rounded-lg focus:border-orange-500"
+              />
+              <p className="text-xs text-orange-600 mt-1 font-semibold">
+                💡 Get this from: PropellerAds Dashboard → Zone Groups → Create Interstitial Zone → Copy Zone ID
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will show video/interstitial ads in the Watch Ad feature, generating revenue from views!
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  if (!propellerAdsBannerZoneId && !propellerAdsInterstitialZoneId) {
+                    alert('Please enter at least one Zone ID (Banner or Interstitial)');
+                    return;
+                  }
+                  
+                  const settingsToSave = {};
+                  if (propellerAdsBannerZoneId) {
+                    settingsToSave.propellerAdsBannerZoneId = propellerAdsBannerZoneId;
+                  }
+                  if (propellerAdsInterstitialZoneId) {
+                    settingsToSave.propellerAdsInterstitialZoneId = propellerAdsInterstitialZoneId;
+                  }
+                  
+                  // Preserve existing settings
+                  const currentSettings = await getAdminSettings();
+                  if (currentSettings.success && currentSettings.settings) {
+                    Object.keys(currentSettings.settings).forEach(key => {
+                      if (!settingsToSave.hasOwnProperty(key) && key !== 'updatedAt') {
+                        settingsToSave[key] = currentSettings.settings[key];
+                      }
+                    });
+                  }
+                  
+                  const result = await updateAdminSettings(settingsToSave);
+                  
+                  // Also save to localStorage
+                  if (propellerAdsBannerZoneId) {
+                    localStorage.setItem('propeller_ads_banner_zone_id', propellerAdsBannerZoneId);
+                  }
+                  if (propellerAdsInterstitialZoneId) {
+                    localStorage.setItem('propeller_ads_interstitial_zone_id', propellerAdsInterstitialZoneId);
+                  }
+                  
+                  let message = `✅ PropellerAds configured successfully!\n\n`;
+                  if (propellerAdsBannerZoneId) {
+                    message += `✅ Banner ads will show at the bottom of every page\n\n`;
+                  }
+                  if (propellerAdsInterstitialZoneId) {
+                    message += `✅ Watch Ad feature will show video/interstitial ads\n\n`;
+                  }
+                  message += `💰 Revenue: You'll earn money from ad views/impressions!`;
+                  
+                  if (!result.success) {
+                    message = `⚠️ Saved locally. Error: ${result.error}\n\n${message}`;
+                  }
+                  
+                  alert(message);
+                  setShowPropellerAdsConfig(false);
+                  onReload();
+                }}
+                className="btn-primary flex items-center bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700"
+              >
+                Enable PropellerAds
+              </button>
+              <button
+                onClick={() => setShowPropellerAdsConfig(false)}
+                className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+            
+            {propellerAdsBannerZoneId && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-800">
+                  ✓ Banner Zone ID configured. Banner ads will appear at the bottom of pages.
+                </p>
+              </div>
+            )}
+            {propellerAdsInterstitialZoneId && (
+              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-xs text-green-800">
+                  ✓ Interstitial Zone ID configured. Watch Ad feature will show video/interstitial ads.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* CPAlead Configuration */}
       {showCPALeadConfig && (
         <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200">
@@ -910,7 +2066,7 @@ function OffersTab({ offers, onReload }) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                CPAlead Direct Link URL
+                CPAlead Offerwall Direct Link URL
               </label>
               <input
                 type="text"
@@ -921,6 +2077,25 @@ function OffersTab({ offers, onReload }) {
               />
               <p className="text-xs text-gray-500 mt-1">
                 💡 Get this from: CPAlead Dashboard → Reward Tools → Your Offerwall → "GET CODE" → Copy "Direct Link"
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <span className="text-red-600 font-bold">⭐ CPAlead Custom Ad URL (For Watch Ad)</span>
+              </label>
+              <input
+                type="text"
+                value={cpaleadCustomAdUrl}
+                onChange={(e) => setCPALeadCustomAdUrl(e.target.value.trim())}
+                placeholder="Paste Custom Ad Direct Link URL (e.g., https://zwidgetbv3dft.xyz/custom/XXXXX)"
+                className="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:border-purple-500"
+              />
+              <p className="text-xs text-purple-600 mt-1 font-semibold">
+                💡 IMPORTANT: This is for "Watch Ad" feature. Get this from: CPAlead Dashboard → Ad Tools → Create Custom Ad → Get Code → Copy "Direct Link" URL
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will show actual video/interstitial ads instead of offers, generating revenue from ad views!
               </p>
             </div>
             
@@ -985,6 +2160,9 @@ function OffersTab({ offers, onReload }) {
                   const settingsToSave = {
                     cpaleadPublisherId,
                   };
+                  if (cpaleadCustomAdUrl) {
+                    settingsToSave.cpaleadCustomAdUrl = cpaleadCustomAdUrl;
+                  }
                   if (cpaleadLinkLockerUrl) {
                     settingsToSave.cpaleadLinkLockerUrl = cpaleadLinkLockerUrl;
                   }
@@ -1008,6 +2186,9 @@ function OffersTab({ offers, onReload }) {
                   
                   // Also save to localStorage for backward compatibility
                   localStorage.setItem('cpalead_publisher_id', cpaleadPublisherId);
+                  if (cpaleadCustomAdUrl) {
+                    localStorage.setItem('cpalead_custom_ad_url', cpaleadCustomAdUrl);
+                  }
                   if (cpaleadLinkLockerUrl) {
                     localStorage.setItem('cpalead_link_locker_url', cpaleadLinkLockerUrl);
                   }
@@ -1019,6 +2200,7 @@ function OffersTab({ offers, onReload }) {
                   }
                   
                   let message = `✅ CPAlead tools configured successfully! All users can now see offers.\n\n📝 Next Steps:\n1. Go to the Tasks page\n2. You'll see all configured CPAlead tools\n3. Users complete offers → You earn money!\n\n🎯 Remember: You need to earn $50 in 8 days!`;
+                  if (cpaleadCustomAdUrl) message += '\n\n⭐ Custom Ad URL added - Watch Ad feature will show real ads!';
                   if (cpaleadLinkLockerUrl) message += '\n\n✅ Link Locker added';
                   if (cpaleadFileLockerUrl) message += '\n\n✅ File Locker added';
                   if (cpaleadQuizUrl) message += '\n\n✅ Quiz added';

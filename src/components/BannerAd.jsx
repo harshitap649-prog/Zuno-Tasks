@@ -1,116 +1,118 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function BannerAd({ className = '' }) {
   const bannerRef = useRef(null);
-  const adLoadedRef = useRef(false);
-  const adContainerId = useRef(`banner-ad-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const [adProvider, setAdProvider] = useState(null); // 'popads', 'propeller', or 'cpalead'
+  const [popAdsSiteId, setPopAdsSiteId] = useState('');
+  const [propellerZoneId, setPropellerZoneId] = useState('');
+  const [cpaleadOfferwallUrl, setCPALeadOfferwallUrl] = useState('');
+  const scriptLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (adLoadedRef.current || !bannerRef.current) return;
-
-    const loadBannerAd = () => {
+    // Load ad settings from Firebase or localStorage
+    const loadAdSettings = async () => {
       try {
-        const adContainer = bannerRef.current;
-        if (!adContainer) return;
-
-        // Clear any existing content
-        adContainer.innerHTML = '';
-
-        // Create container for Adsterra banner ad
-        const adWrapper = document.createElement('div');
-        adWrapper.id = adContainerId.current;
-        adWrapper.className = 'banner-ad-container';
-        adWrapper.style.cssText = `
-          width: 100%;
-          min-height: 50px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          margin: 0 auto;
-        `;
-
-        // Adsterra Banner Ad Configuration - Exact format from Adsterra
-        const adKey = '92f35e106485494ea7ef96a502ccaa7a';
+        // Try to get from Firebase settings first
+        const { getSettings } = await import('../firebase/firestore');
+        const settings = await getSettings();
         
-        // Create container div where ad will be injected
-        const adDiv = document.createElement('div');
-        adDiv.id = `${adContainerId.current}-ad`;
-        adDiv.style.cssText = `
-          width: 320px;
-          height: 50px;
-          max-width: 100%;
-          margin: 0 auto;
-          display: block;
-        `;
-        
-        adWrapper.appendChild(adDiv);
-        adContainer.appendChild(adWrapper);
-
-        // Set atOptions globally (must be set before invoke.js loads)
-        // Using exact format from Adsterra
-        if (typeof window !== 'undefined') {
-          window.atOptions = {
-            'key': adKey,
-            'format': 'iframe',
-            'height': 50,
-            'width': 320,
-            'params': {}
-          };
+        // Priority 1: PopAds (Easiest!)
+        if (settings?.popAdsSiteId) {
+          setAdProvider('popads');
+          setPopAdsSiteId(settings.popAdsSiteId);
+          return;
         }
         
-        // Create first script - atOptions config (inline script)
-        const configScript = document.createElement('script');
-        configScript.type = 'text/javascript';
-        configScript.text = `atOptions = { 'key': '${adKey}', 'format': 'iframe', 'height': 50, 'width': 320, 'params': {} };`;
+        // Priority 2: PropellerAds Banner
+        if (settings?.propellerAdsBannerZoneId) {
+          setAdProvider('propeller');
+          setPropellerZoneId(settings.propellerAdsBannerZoneId);
+          return;
+        }
         
-        // Create second script - Adsterra invoke.js (external script)
-        const invokeScript = document.createElement('script');
-        invokeScript.type = 'text/javascript';
-        invokeScript.src = `//www.highperformanceformat.com/${adKey}/invoke.js`; // Protocol-relative URL
-        invokeScript.async = true;
-        invokeScript.charset = 'utf-8';
-        
-        // Append both scripts in order (config first, then invoke)
-        adDiv.appendChild(configScript);
-        adDiv.appendChild(invokeScript);
-
-        // Monitor for ad loading
-        const checkAdLoaded = setInterval(() => {
-          const hasAd = adWrapper.querySelector('iframe, img, a[href]');
-          if (hasAd) {
-            clearInterval(checkAdLoaded);
-            adLoadedRef.current = true;
-          }
-        }, 500);
-
-        // Cleanup after 10 seconds
-        setTimeout(() => {
-          clearInterval(checkAdLoaded);
-          adLoadedRef.current = true;
-        }, 10000);
-
-        // Handle script load
-        script.onload = () => {
-          console.log('Adsterra banner ad script loaded');
-        };
-
-        script.onerror = () => {
-          console.error('Error loading Adsterra banner ad script');
-          clearInterval(checkAdLoaded);
-        };
-
+        // Priority 3: CPALead Offerwall
+        if (settings?.cpaleadPublisherId) {
+          setAdProvider('cpalead');
+          setCPALeadOfferwallUrl(settings.cpaleadPublisherId);
+          return;
+        }
       } catch (error) {
-        console.error('Error loading banner ad:', error);
+        console.log('Could not load settings from Firebase:', error);
+      }
+
+      // Fallback to localStorage
+      const savedPopAds = localStorage.getItem('popads_site_id') || '';
+      if (savedPopAds) {
+        setAdProvider('popads');
+        setPopAdsSiteId(savedPopAds);
+        return;
+      }
+      
+      const savedPropellerBanner = localStorage.getItem('propeller_ads_banner_zone_id') || '';
+      if (savedPropellerBanner) {
+        setAdProvider('propeller');
+        setPropellerZoneId(savedPropellerBanner);
+        return;
+      }
+      
+      const savedOfferwall = localStorage.getItem('cpalead_publisher_id') || '';
+      if (savedOfferwall) {
+        setAdProvider('cpalead');
+        setCPALeadOfferwallUrl(savedOfferwall);
       }
     };
 
-    // Load ad after component mounts
-    const timer = setTimeout(loadBannerAd, 200);
-    return () => {
-      clearTimeout(timer);
-    };
+    loadAdSettings();
   }, []);
+
+  // Load and initialize PopAds
+  useEffect(() => {
+    if (adProvider === 'popads' && popAdsSiteId && !scriptLoadedRef.current) {
+      // PopAds script - loads automatically
+      const script = document.createElement('script');
+      script.src = `https://popads.net/pop.js?site=${popAdsSiteId}`;
+      script.async = true;
+      script.onload = () => {
+        console.log('✅ PopAds script loaded for site:', popAdsSiteId);
+      };
+      document.head.appendChild(script);
+      scriptLoadedRef.current = true;
+    }
+  }, [adProvider, popAdsSiteId]);
+
+  // Load and initialize PropellerAds
+  useEffect(() => {
+    if (adProvider === 'propeller' && propellerZoneId && bannerRef.current && !scriptLoadedRef.current) {
+      // Load PropellerAds script
+      const script = document.createElement('script');
+      script.src = 'https://ad.propellerads.com/script/pub.js';
+      script.async = true;
+      script.onload = () => {
+        console.log('✅ PropellerAds script loaded');
+        // Initialize ad after script loads
+        setTimeout(() => {
+          if (window.propel_ad && bannerRef.current) {
+            try {
+              const adContainer = bannerRef.current.querySelector(`#propeller-banner-${propellerZoneId}`);
+              if (adContainer) {
+                // PropellerAds will automatically detect and fill the container
+                console.log('✅ PropellerAds banner initialized for zone:', propellerZoneId);
+              }
+            } catch (error) {
+              console.error('Error initializing PropellerAds:', error);
+            }
+          }
+        }, 500);
+      };
+      document.head.appendChild(script);
+      scriptLoadedRef.current = true;
+    }
+  }, [adProvider, propellerZoneId]);
+
+  if (!adProvider) {
+    // No ad provider configured, don't show ad
+    return null;
+  }
 
   return (
     <div 
@@ -118,10 +120,10 @@ export default function BannerAd({ className = '' }) {
       className={`${className} banner-ad-wrapper`}
       style={{
         width: '100%',
-        minHeight: '50px',
+        minHeight: '90px',
         display: 'block',
         backgroundColor: '#f9fafb',
-        padding: '12px 0',
+        padding: '8px 0',
         margin: '0 auto',
         position: 'relative',
         zIndex: 50
@@ -129,7 +131,44 @@ export default function BannerAd({ className = '' }) {
       data-ad-container="true"
       data-ad-type="banner"
     >
-      {/* Adsterra Banner Ad will be injected here */}
+      {adProvider === 'popads' && popAdsSiteId ? (
+        /* PopAds - Script loads automatically, no container needed for banner */
+        <div style={{ display: 'none' }} data-popads-site={popAdsSiteId}></div>
+      ) : adProvider === 'propeller' && propellerZoneId ? (
+        /* PropellerAds Banner */
+        <div 
+          id={`propeller-banner-${propellerZoneId}`}
+          data-zone-id={propellerZoneId}
+          data-propeller-zone={propellerZoneId}
+          style={{
+            width: '100%',
+            minHeight: '90px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto',
+            maxWidth: '728px'
+          }}
+        >
+          {/* PropellerAds will inject ad here via script */}
+        </div>
+      ) : adProvider === 'cpalead' && cpaleadOfferwallUrl ? (
+        /* CPALead Offerwall Banner Ad */
+        <iframe
+          src={cpaleadOfferwallUrl}
+          title="CPALead Offerwall"
+          style={{
+            width: '100%',
+            height: '90px',
+            border: 'none',
+            display: 'block',
+            margin: '0 auto',
+            maxWidth: '728px'
+          }}
+          scrolling="no"
+          frameBorder="0"
+        />
+      ) : null}
     </div>
   );
 }

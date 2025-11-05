@@ -155,46 +155,94 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-            ZunoTasks
-          </h1>
-          <p className="text-gray-600 mt-2 font-semibold">Complete. Watch. Earn. Withdraw.</p>
-          <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
+    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 opacity-90"></div>
+      <div 
+        className="absolute inset-0 opacity-20" 
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+        }}
+      ></div>
+      
+      {/* Floating Orbs */}
+      <div className="absolute top-20 left-10 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob"></div>
+      <div className="absolute top-40 right-10 w-72 h-72 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-2000"></div>
+      <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
+
+      <div className="max-w-md w-full space-y-6 relative z-10">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-block mb-4">
+            <h1 className="text-6xl font-extrabold bg-gradient-to-r from-white via-purple-100 to-pink-100 bg-clip-text text-transparent drop-shadow-lg mb-3">
+              ZunoTasks
+            </h1>
+            <div className="h-1 w-24 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full mx-auto"></div>
+          </div>
+          <p className="text-white text-lg font-semibold mb-2 drop-shadow-md">Complete. Watch. Earn. Withdraw.</p>
+          <p className="text-purple-100 text-sm max-w-md mx-auto leading-relaxed">
             Earn real money by completing simple tasks and watching ads. Convert points to cash (100 points = ₹10). 
-            Minimum withdrawal ₹100 via UPI/Paytm. Start earning today!
+            Minimum withdrawal ₹100 via UPI/Paytm.
           </p>
         </div>
 
-        <div className="card">
+        {/* Main Card */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 p-8 relative overflow-hidden">
+          {/* Card Gradient Overlay */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-200/20 to-pink-200/20 rounded-full blur-3xl"></div>
+          <div className="relative z-10">
+          {/* Toggle Button */}
           <div className="flex justify-center mb-6">
-            <button
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setError('');
-                setFieldErrors({});
-                setEmail('');
-                setPassword('');
-                setName('');
-              }}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              {isLogin ? 'Switch to Sign Up' : 'Switch to Login'}
-            </button>
+            <div className="relative bg-gray-100 rounded-xl p-1 inline-flex">
+              <button
+                onClick={() => {
+                  setIsLogin(true);
+                  setError('');
+                  setFieldErrors({});
+                  setEmail('');
+                  setPassword('');
+                  setName('');
+                }}
+                className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 ${
+                  isLogin
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => {
+                  setIsLogin(false);
+                  setError('');
+                  setFieldErrors({});
+                  setEmail('');
+                  setPassword('');
+                  setName('');
+                }}
+                className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-300 ${
+                  !isLogin
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Sign Up
+              </button>
+            </div>
           </div>
 
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-lg flex items-start text-red-700 animate-fade-in">
-              <AlertCircle className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+            <div className="mb-6 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 rounded-xl flex items-start text-red-700 shadow-lg animate-fade-in">
+              <div className="bg-red-100 rounded-full p-2 mr-3 flex-shrink-0">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
               <div className="flex-1">
-                <p className="font-semibold text-sm mb-1">Authentication Error</p>
+                <p className="font-bold text-sm mb-1">Authentication Error</p>
                 <p className="text-sm">{error}</p>
               </div>
               <button
                 onClick={() => setError('')}
-                className="ml-2 text-red-500 hover:text-red-700 transition-colors"
+                className="ml-2 text-red-500 hover:text-red-700 transition-colors p-1 hover:bg-red-100 rounded-full"
                 aria-label="Close error"
               >
                 <X className="w-4 h-4" />
@@ -202,16 +250,18 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleEmailAuth} className="space-y-4">
+          <form onSubmit={handleEmailAuth} className="space-y-5">
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Full Name
                 </label>
-                <div className="relative">
-                  <User className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                    fieldErrors.name ? 'text-red-400' : 'text-gray-400'
-                  }`} />
+                <div className="relative group">
+                  <div className={`absolute left-4 top-1/2 transform -translate-y-1/2 transition-colors ${
+                    fieldErrors.name ? 'text-red-400' : 'text-gray-400 group-focus-within:text-purple-600'
+                  }`}>
+                    <User className="w-5 h-5" />
+                  </div>
                   <input
                     type="text"
                     value={name}
@@ -219,18 +269,18 @@ export default function Login() {
                       setName(e.target.value);
                       clearFieldError('name');
                     }}
-                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                    className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 ${
                       fieldErrors.name 
-                        ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500' 
-                        : 'border-gray-300'
+                        ? 'border-red-300 bg-red-50/50 focus:border-red-500 focus:ring-red-500' 
+                        : 'border-gray-200 bg-gray-50/50 focus:bg-white hover:border-gray-300'
                     }`}
                     placeholder="Enter your full name"
                     required={!isLogin}
                   />
                 </div>
                 {fieldErrors.name && (
-                  <p className="mt-1 text-sm text-red-600 flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-1" />
+                  <p className="mt-2 text-sm text-red-600 flex items-center animate-fade-in">
+                    <AlertCircle className="w-4 h-4 mr-1.5" />
                     {fieldErrors.name}
                   </p>
                 )}
@@ -238,13 +288,15 @@ export default function Login() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Email Address
               </label>
-              <div className="relative">
-                <Mail className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                  fieldErrors.email ? 'text-red-400' : 'text-gray-400'
-                }`} />
+              <div className="relative group">
+                <div className={`absolute left-4 top-1/2 transform -translate-y-1/2 transition-colors ${
+                  fieldErrors.email ? 'text-red-400' : 'text-gray-400 group-focus-within:text-purple-600'
+                }`}>
+                  <Mail className="w-5 h-5" />
+                </div>
                 <input
                   type="email"
                   value={email}
@@ -252,31 +304,33 @@ export default function Login() {
                     setEmail(e.target.value);
                     clearFieldError('email');
                   }}
-                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                  className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 ${
                     fieldErrors.email 
-                      ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500' 
-                      : 'border-gray-300'
+                      ? 'border-red-300 bg-red-50/50 focus:border-red-500 focus:ring-red-500' 
+                      : 'border-gray-200 bg-gray-50/50 focus:bg-white hover:border-gray-300'
                   }`}
                   placeholder="your.email@example.com"
                   required
                 />
               </div>
               {fieldErrors.email && (
-                <p className="mt-1 text-sm text-red-600 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
+                <p className="mt-2 text-sm text-red-600 flex items-center animate-fade-in">
+                  <AlertCircle className="w-4 h-4 mr-1.5" />
                   {fieldErrors.email}
                 </p>
               )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Password
               </label>
-              <div className="relative">
-                <Lock className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${
-                  fieldErrors.password ? 'text-red-400' : 'text-gray-400'
-                }`} />
+              <div className="relative group">
+                <div className={`absolute left-4 top-1/2 transform -translate-y-1/2 transition-colors ${
+                  fieldErrors.password ? 'text-red-400' : 'text-gray-400 group-focus-within:text-purple-600'
+                }`}>
+                  <Lock className="w-5 h-5" />
+                </div>
                 <input
                   type="password"
                   value={password}
@@ -284,10 +338,10 @@ export default function Login() {
                     setPassword(e.target.value);
                     clearFieldError('password');
                   }}
-                  className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                  className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all duration-200 ${
                     fieldErrors.password 
-                      ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500' 
-                      : 'border-gray-300'
+                      ? 'border-red-300 bg-red-50/50 focus:border-red-500 focus:ring-red-500' 
+                      : 'border-gray-200 bg-gray-50/50 focus:bg-white hover:border-gray-300'
                   }`}
                   placeholder={isLogin ? "Enter your password" : "At least 6 characters"}
                   required
@@ -295,14 +349,14 @@ export default function Login() {
                 />
               </div>
               {fieldErrors.password && (
-                <p className="mt-1 text-sm text-red-600 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
+                <p className="mt-2 text-sm text-red-600 flex items-center animate-fade-in">
+                  <AlertCircle className="w-4 h-4 mr-1.5" />
                   {fieldErrors.password}
                 </p>
               )}
               {!isLogin && !fieldErrors.password && password.length > 0 && password.length < 6 && (
-                <p className="mt-1 text-sm text-gray-500 flex items-center">
-                  <Lock className="w-4 h-4 mr-1" />
+                <p className="mt-2 text-sm text-purple-600 flex items-center">
+                  <Lock className="w-4 h-4 mr-1.5" />
                   Password must be at least 6 characters long
                 </p>
               )}
@@ -311,28 +365,38 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3.5 px-6 bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 hover:from-purple-700 hover:via-pink-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
             >
-              {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white mr-2"></div>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-5 h-5 mr-2" />
+                  {isLogin ? 'Sign In' : 'Sign Up'}
+                </>
+              )}
             </button>
           </form>
 
           <div className="mt-6">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
+                <div className="w-full border-t border-gray-200"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                <span className="px-4 bg-white/95 text-gray-500 font-medium">Or continue with</span>
               </div>
             </div>
 
             <button
               onClick={handleGoogleAuth}
               disabled={loading}
-              className="mt-4 w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-5 w-full flex items-center justify-center px-4 py-3.5 border-2 border-gray-200 rounded-xl shadow-md bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -350,8 +414,9 @@ export default function Login() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Google
+              Continue with Google
             </button>
+          </div>
           </div>
         </div>
       </div>

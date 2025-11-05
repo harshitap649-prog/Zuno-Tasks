@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getActiveOffers, getUserOngoingTasks, startTask, getAdminSettings, subscribeToAdminSettings } from '../firebase/firestore';
+import { getActiveOffers, getUserOngoingTasks, startTask, getAdminSettings, subscribeToAdminSettings, subscribeToOffers } from '../firebase/firestore';
 import { Coins, Gift, Clock, ArrowLeft, ExternalLink, HelpCircle, PlayCircle, FileText, Smartphone } from 'lucide-react';
 import OfferToroOfferwall from '../components/OfferToroOfferwall';
 import InstantNetworkOfferwall from '../components/InstantNetworkOfferwall';
@@ -18,7 +18,9 @@ export default function Tasks({ user }) {
   const [availableTasks, setAvailableTasks] = useState([]);
   const [ongoingTasks, setOngoingTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('all'); // 'quizzes', 'surveys', 'videos', 'apps', 'all'
+  const [activeCategory, setActiveCategory] = useState('all'); // 'games', 'quizzes', 'surveys', 'videos', 'apps', 'all'
+  const [newTasksNotification, setNewTasksNotification] = useState(null);
+  const previousTasksCountRef = useRef(0);
   
   // Individual component visibility states
   const [showOfferToro, setShowOfferToro] = useState(false);
@@ -57,6 +59,7 @@ export default function Tasks({ user }) {
   const [surveySources, setSurveySources] = useState([]);
   const [videoSources, setVideoSources] = useState([]);
   const [appSources, setAppSources] = useState([]);
+  const [cpaleadIndividualOffers, setCPALeadIndividualOffers] = useState([]);
   
   const navigate = useNavigate();
 
@@ -82,6 +85,10 @@ export default function Tasks({ user }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
+        const loadedOffers = settings.cpaleadIndividualOffers || [];
+        console.log('📋 Loading CPAlead Individual Offers from Firebase:', loadedOffers);
+        setCPALeadIndividualOffers(loadedOffers);
+        previousTasksCountRef.current = loadedOffers.length;
       } else {
         // Fallback to localStorage if Firestore doesn't have settings
     const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
@@ -105,9 +112,47 @@ export default function Tasks({ user }) {
     
     loadSettings();
     
-    // Subscribe to real-time updates so all users see changes immediately
-    const unsubscribe = subscribeToAdminSettings((settings) => {
+    // Subscribe to real-time updates for offers (from Firestore 'offers' collection)
+    const unsubscribeOffers = subscribeToOffers((offers) => {
+      console.log('🔄 Real-time offers update:', offers.length, 'offers');
+      
+      // Filter out tasks that are already ongoing
+      if (user && user.uid) {
+        getUserOngoingTasks(user.uid).then((ongoingResult) => {
+          if (ongoingResult.success) {
+            const ongoingOfferIds = new Set(ongoingResult.tasks.map(t => t.offerId));
+            const available = offers.filter(offer => !ongoingOfferIds.has(offer.id));
+            setAvailableTasks(available);
+            setOngoingTasks(ongoingResult.tasks);
+            
+            // Show notification if new tasks are added
+            if (previousTasksCountRef.current > 0 && available.length > previousTasksCountRef.current) {
+              const newCount = available.length - previousTasksCountRef.current;
+              setNewTasksNotification(`🎉 ${newCount} new task${newCount > 1 ? 's' : ''} available!`);
+              setTimeout(() => setNewTasksNotification(null), 5000);
+            }
+            previousTasksCountRef.current = available.length;
+          } else {
+            setAvailableTasks(offers);
+          }
+        });
+      } else {
+        setAvailableTasks(offers);
+        
+        // Show notification if new tasks are added
+        if (previousTasksCountRef.current > 0 && offers.length > previousTasksCountRef.current) {
+          const newCount = offers.length - previousTasksCountRef.current;
+          setNewTasksNotification(`🎉 ${newCount} new task${newCount > 1 ? 's' : ''} available!`);
+          setTimeout(() => setNewTasksNotification(null), 5000);
+        }
+        previousTasksCountRef.current = offers.length;
+      }
+    });
+    
+    // Subscribe to real-time updates for admin settings (CPALead individual offers, etc.)
+    const unsubscribeSettings = subscribeToAdminSettings((settings) => {
       if (settings) {
+        console.log('🔄 Real-time admin settings update');
         setOffertoroApiKey(settings.offertoroApiKey || '');
         setInstantNetwork(settings.instantNetwork || '');
         setInstantNetworkApiKey(settings.instantNetworkApiKey || '');
@@ -129,11 +174,24 @@ export default function Tasks({ user }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
+        const realtimeOffers = settings.cpaleadIndividualOffers || [];
+        
+        // Show notification if new individual offers are added
+        if (previousTasksCountRef.current > 0 && realtimeOffers.length > previousTasksCountRef.current) {
+          const newCount = realtimeOffers.length - previousTasksCountRef.current;
+          setNewTasksNotification(`🎉 ${newCount} new offer${newCount > 1 ? 's' : ''} added!`);
+          setTimeout(() => setNewTasksNotification(null), 5000);
+        }
+        
+        console.log('📋 Real-time update - CPAlead Individual Offers:', realtimeOffers);
+        setCPALeadIndividualOffers(realtimeOffers);
+        previousTasksCountRef.current = realtimeOffers.length;
       }
     });
     
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubscribeOffers) unsubscribeOffers();
+      if (unsubscribeSettings) unsubscribeSettings();
     };
   }, [user]);
 
@@ -230,6 +288,10 @@ export default function Tasks({ user }) {
         return instantNetwork || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(videoSources) && videoSources.length > 0);
       case 'apps':
         return cpaleadPublisherId || instantNetwork || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(appSources) && appSources.length > 0);
+      case 'games':
+        const hasGames = Array.isArray(cpaleadIndividualOffers) && cpaleadIndividualOffers.length > 0;
+        console.log('🎮 hasCategoryItems(games):', hasGames, 'offers:', cpaleadIndividualOffers);
+        return hasGames;
       case 'all':
         return true;
       default:
@@ -248,6 +310,14 @@ export default function Tasks({ user }) {
     );
   }
 
+  // Auto-dismiss notification after 5 seconds
+  useEffect(() => {
+    if (newTasksNotification) {
+      const timer = setTimeout(() => setNewTasksNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [newTasksNotification]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -257,78 +327,119 @@ export default function Tasks({ user }) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+        {/* New Tasks Notification */}
+        {newTasksNotification && (
+          <div className="mb-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center justify-between animate-slide-down">
+            <span className="font-semibold">{newTasksNotification}</span>
+            <button
+              onClick={() => setNewTasksNotification(null)}
+              className="ml-4 hover:bg-white/20 rounded-full p-1 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        
+        {/* Hero Header */}
+        <div className="mb-12">
           <button
             onClick={() => navigate('/dashboard')}
-            className="mr-4 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="mb-6 p-2 hover:bg-white/50 rounded-lg transition-all duration-200 inline-flex items-center group"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <ArrowLeft className="w-5 h-5 text-gray-600 group-hover:text-purple-600 transition-colors" />
+            <span className="ml-2 text-gray-600 group-hover:text-purple-600 transition-colors">Back to Dashboard</span>
           </button>
-          <h1 className="text-3xl font-bold text-gray-800 flex items-center">
-            <Gift className="w-8 h-8 mr-3 text-purple-600" />
-            Available Tasks
-          </h1>
+          <div className="text-center">
+            <div className="relative inline-flex items-center justify-center mb-4">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+              <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 p-3 rounded-xl shadow-xl transform hover:scale-105 transition-transform duration-300">
+                <Gift className="w-8 h-8 text-white" />
+              </div>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-3">
+              Available Tasks
+            </h1>
+            <p className="text-base text-gray-600 max-w-2xl mx-auto leading-relaxed">
+              Complete tasks, quizzes, surveys, and watch videos to earn points and cash rewards.
+            </p>
+          </div>
         </div>
-      </div>
 
-      {/* Category Tabs */}
-      <div className="mb-8">
-        <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-          <CategoryTab
-            icon={HelpCircle}
-            label="All Tasks"
-            category="all"
-            activeCategory={activeCategory}
-            onClick={() => setActiveCategory('all')}
-            count={null}
-          />
-          <CategoryTab
-            icon={FileText}
-            label="Quizzes"
-            category="quizzes"
-            activeCategory={activeCategory}
-            onClick={() => setActiveCategory('quizzes')}
-            count={(cpaleadQuizUrl ? 1 : 0) + (Array.isArray(quizSources) ? quizSources.length : 0)}
-            hasItems={hasCategoryItems('quizzes')}
-          />
-          <CategoryTab
-            icon={HelpCircle}
-            label="Surveys"
-            category="surveys"
-            activeCategory={activeCategory}
-            onClick={() => setActiveCategory('surveys')}
-            count={null}
-            hasItems={hasCategoryItems('surveys')}
-          />
-          <CategoryTab
-            icon={PlayCircle}
-            label="Watch Videos"
-            category="videos"
-            activeCategory={activeCategory}
-            onClick={() => setActiveCategory('videos')}
-            count={null}
-            hasItems={hasCategoryItems('videos')}
-          />
-          <CategoryTab
-            icon={Smartphone}
-            label="Install Apps"
-            category="apps"
-            activeCategory={activeCategory}
-            onClick={() => setActiveCategory('apps')}
-            count={null}
-            hasItems={hasCategoryItems('apps')}
-          />
+        {/* Category Tabs */}
+        <div className="mb-4">
+          <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+            <CategoryTab
+              icon={HelpCircle}
+              label="All Tasks"
+              category="all"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('all')}
+              count={null}
+            />
+            <CategoryTab
+              icon={Gift}
+              label="Game Tasks"
+              category="games"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('games')}
+              count={Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers.length : 0}
+              hasItems={hasCategoryItems('games')}
+            />
+            <CategoryTab
+              icon={FileText}
+              label="Quizzes"
+              category="quizzes"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('quizzes')}
+              count={(cpaleadQuizUrl ? 1 : 0) + (Array.isArray(quizSources) ? quizSources.length : 0)}
+              hasItems={hasCategoryItems('quizzes')}
+            />
+            <CategoryTab
+              icon={HelpCircle}
+              label="Surveys"
+              category="surveys"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('surveys')}
+              count={null}
+              hasItems={hasCategoryItems('surveys')}
+            />
+            <CategoryTab
+              icon={PlayCircle}
+              label="Watch Videos"
+              category="videos"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('videos')}
+              count={null}
+              hasItems={hasCategoryItems('videos')}
+            />
+            <CategoryTab
+              icon={Smartphone}
+              label="Install Apps"
+              category="apps"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('apps')}
+              count={null}
+              hasItems={hasCategoryItems('apps')}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* Category Content */}
+        {/* Category Content */}
+      {(activeCategory === 'all' || activeCategory === 'games') && (
+        <GameTasksCategory
+          cpaleadIndividualOffers={cpaleadIndividualOffers}
+        />
+      )}
+
       {(activeCategory === 'all' || activeCategory === 'quizzes') && (
         <QuizzesCategory
           cpaleadQuizUrl={cpaleadQuizUrl}
           quizSources={quizSources}
+          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'quizzes' || o.category === 'all')}
           userId={user.uid}
           user={user}
           availableTasks={availableTasks}
@@ -351,6 +462,7 @@ export default function Tasks({ user }) {
           adgemApiKey={adgemApiKey}
           adgemOfferwallUrl={adgemOfferwallUrl}
           surveySources={surveySources}
+          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all')}
           availableTasks={availableTasks}
           userId={user.uid}
           user={user}
@@ -385,6 +497,7 @@ export default function Tasks({ user }) {
           adgemApiKey={adgemApiKey}
           adgemOfferwallUrl={adgemOfferwallUrl}
           videoSources={videoSources}
+          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all')}
           availableTasks={availableTasks}
           userId={user.uid}
           showCPALead={showCPALead}
@@ -416,6 +529,7 @@ export default function Tasks({ user }) {
           adgemApiKey={adgemApiKey}
           adgemOfferwallUrl={adgemOfferwallUrl}
           appSources={appSources}
+          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all')}
           availableTasks={availableTasks}
           userId={user.uid}
           showCPALead={showCPALead}
@@ -432,28 +546,29 @@ export default function Tasks({ user }) {
         />
       )}
 
-      {/* Manual Tasks / External Offers with Referral Links - DISABLED */}
-      {false && Array.isArray(availableTasks) && availableTasks.length > 0 && (
-        <div className="card mt-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
-            <Gift className="w-6 h-6 mr-2 text-purple-600" />
-            Manual Tasks
-            <span className="ml-3 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-semibold">
-              {availableTasks.length}
-            </span>
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {availableTasks.map((task) => (
-              <AvailableTaskCard 
-                key={task.id} 
-                task={task} 
-                userId={user.uid}
-                onStart={loadTasks}
-              />
-            ))}
+        {/* Manual Tasks / External Offers with Referral Links - DISABLED */}
+        {false && Array.isArray(availableTasks) && availableTasks.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mt-4">
+            <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+              <Gift className="w-4 h-4 mr-2 text-purple-600" />
+              Manual Tasks
+              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
+                {availableTasks.length}
+              </span>
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {availableTasks.map((task) => (
+                <AvailableTaskCard 
+                  key={task.id} 
+                  task={task} 
+                  userId={user.uid}
+                  onStart={loadTasks}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -465,17 +580,17 @@ function CategoryTab({ icon: Icon, label, category, activeCategory, onClick, cou
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all duration-200 ${
+      className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-md hover:shadow-lg ${
         activeCategory === category
-          ? 'bg-purple-600 text-white shadow-lg transform scale-105'
-          : 'bg-white text-gray-700 hover:bg-purple-50 hover:text-purple-600 border-2 border-gray-200 hover:border-purple-300'
+          ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white transform scale-105 shadow-xl'
+          : 'bg-white text-gray-700 hover:bg-purple-50 hover:text-purple-600 border-2 border-gray-200 hover:border-purple-300 hover:scale-105'
       }`}
     >
       <Icon className="w-5 h-5" />
       <span>{label}</span>
       {count !== null && count > 0 && (
-        <span className={`px-2 py-0.5 rounded-full text-xs ${
-          activeCategory === category ? 'bg-white text-purple-600' : 'bg-purple-100 text-purple-700'
+        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+          activeCategory === category ? 'bg-white/20 text-white backdrop-blur-sm' : 'bg-purple-100 text-purple-700'
         }`}>
           {count}
         </span>
@@ -484,45 +599,107 @@ function CategoryTab({ icon: Icon, label, category, activeCategory, onClick, cou
   );
 }
 
-// Quizzes Category Component
-function QuizzesCategory({ cpaleadQuizUrl, quizSources, userId, user, showCPALeadQuiz, setShowCPALeadQuiz, availableTasks = [], onComplete }) {
-  // Manual tasks disabled - removed quizOffers
-  const safeQuizSources = Array.isArray(quizSources) ? quizSources : [];
-  const hasQuizzes = cpaleadQuizUrl || safeQuizSources.length > 0;
+// Game Tasks Category Component
+function GameTasksCategory({ cpaleadIndividualOffers = [] }) {
+  const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
   
-  if (!hasQuizzes) {
+  console.log('🎮 GameTasksCategory - Received offers:', safeIndividualOffers);
+  
+  if (safeIndividualOffers.length === 0) {
     return (
-      <div className="card mb-8">
-        <div className="text-center py-12">
-          <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No quizzes available. Check back later!</p>
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <div className="relative inline-flex items-center justify-center mb-3">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-gray-100 p-4 rounded-lg">
+              <Gift className="w-10 h-10 text-gray-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm font-medium mb-1">No game tasks available</p>
+          <p className="text-gray-400 text-xs">Add CPAlead offers in Admin Panel to see them here!</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 mb-8">
+    <div className="space-y-3 mb-4">
+      {/* All CPAlead Individual Offers */}
+      {safeIndividualOffers.map((offer, index) => (
+        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <Gift className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
+                <p className="text-sm text-gray-600">Complete this game offer to earn rewards!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              Start Offer
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Quizzes Category Component
+function QuizzesCategory({ cpaleadQuizUrl, quizSources, cpaleadIndividualOffers = [], userId, user, showCPALeadQuiz, setShowCPALeadQuiz, availableTasks = [], onComplete }) {
+  // Manual tasks disabled - removed quizOffers
+  const safeQuizSources = Array.isArray(quizSources) ? quizSources : [];
+  const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+  const hasQuizzes = cpaleadQuizUrl || safeQuizSources.length > 0 || safeIndividualOffers.length > 0;
+  
+  if (!hasQuizzes) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <div className="relative inline-flex items-center justify-center mb-3">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-gray-100 p-4 rounded-lg">
+              <FileText className="w-10 h-10 text-gray-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm font-medium mb-1">No quizzes available</p>
+          <p className="text-gray-400 text-xs">Check back later for new quiz opportunities!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 mb-4">
       {/* CPAlead Quiz */}
       {cpaleadQuizUrl && (
-        <div className="card border-2 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                <FileText className="w-6 h-6 mr-2 text-purple-600" />
-                CPAlead Quiz
-              </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <FileText className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">CPAlead Quiz</h2>
+                <p className="text-sm text-gray-600">Complete quizzes and earn points!</p>
+              </div>
             </div>
             <button
               onClick={() => setShowCPALeadQuiz(!showCPALeadQuiz)}
-              className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg flex items-center ml-4"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showCPALeadQuiz ? 'Hide' : 'Start Quiz'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showCPALeadQuiz && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-purple-200 pt-6">
               <CPALeadQuiz
                 key={`quiz-${Date.now()}-${Math.random()}`}
                 quizUrl={cpaleadQuizUrl}
@@ -555,23 +732,23 @@ function QuizzesCategory({ cpaleadQuizUrl, quizSources, userId, user, showCPALea
       {false && Array.isArray(availableTasks) && availableTasks
         .filter(offer => offer && (offer.category === 'quiz' || offer.category === 'quizzes'))
         .map((task) => (
-          <div key={task.id} className="card border-2 border-purple-200">
-            <div className="flex items-center justify-between mb-4">
+          <div key={task.id} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                  <FileText className="w-6 h-6 mr-2 text-purple-600" />
+                <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
+                  <FileText className="w-4 h-4 mr-2 text-purple-600" />
                   {task.title}
                 </h2>
-                <p className="text-sm text-gray-600 mb-2">{task.description}</p>
+                <p className="text-xs text-gray-600 mb-1.5">{task.description}</p>
                 {task.isAffiliate && (
-                  <span className="inline-block px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
+                  <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
                     💰 Affiliate Link
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-purple-600">{task.rewardPoints}</div>
+                  <div className="text-lg font-bold text-purple-600">{task.rewardPoints}</div>
                   <div className="text-xs text-gray-500">points</div>
                 </div>
                 <button
@@ -592,10 +769,10 @@ function QuizzesCategory({ cpaleadQuizUrl, quizSources, userId, user, showCPALea
                       alert('Failed to start task: ' + result.error);
                     }
                   }}
-                  className="bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg flex items-center"
+                  className="bg-purple-600 hover:bg-purple-700 text-white py-1.5 px-3 rounded-lg flex items-center text-xs"
                 >
                   Start Quiz
-                  <ExternalLink className="w-4 h-4 ml-2" />
+                  <ExternalLink className="w-3 h-3 ml-1.5" />
                 </button>
               </div>
             </div>
@@ -604,25 +781,52 @@ function QuizzesCategory({ cpaleadQuizUrl, quizSources, userId, user, showCPALea
 
       {/* Additional Quiz Sources */}
       {quizSources.map((source, index) => (
-        <div key={index} className="card border-2 border-blue-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                <FileText className="w-6 h-6 mr-2 text-blue-600" />
-                {source.name || `${source.source} Quiz`}
-              </h2>
+        <div key={index} className="bg-white rounded-lg shadow-lg border-2 border-blue-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-2 rounded-lg mr-3">
+                <FileText className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{source.name || `${source.source} Quiz`}</h2>
+                <p className="text-sm text-gray-600">Complete this quiz to earn rewards!</p>
+              </div>
             </div>
             <button
               onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
-              className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center ml-4"
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               Start Quiz
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
+        </div>
+      ))}
+
+      {/* CPAlead Individual Offers (Quizzes) */}
+      {safeIndividualOffers.map((offer, index) => (
+        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <FileText className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
+                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              Start Offer
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
           </div>
-            ))}
-          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -639,6 +843,7 @@ function SurveysCategory({
   adgemApiKey,
   adgemOfferwallUrl,
   surveySources = [],
+  cpaleadIndividualOffers = [],
   availableTasks = [],
   userId,
   user,
@@ -658,42 +863,49 @@ function SurveysCategory({
 }) {
       // Safety checks
       const safeSurveySources = Array.isArray(surveySources) ? surveySources : [];
+      const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
       // Manual tasks disabled - removed surveyOffers
       
       // CPAlead offerwall disabled - removed cpaleadPublisherId
-      const hasSurveys = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeSurveySources.length > 0;
+      const hasSurveys = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeSurveySources.length > 0 || safeIndividualOffers.length > 0;
 
   if (!hasSurveys) {
     return (
-      <div className="card mb-8">
-        <div className="text-center py-12">
-          <HelpCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No surveys available. Check back later!</p>
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <div className="relative inline-flex items-center justify-center mb-3">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-gray-100 p-4 rounded-lg">
+              <HelpCircle className="w-10 h-10 text-gray-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm font-medium mb-1">No surveys available</p>
+          <p className="text-gray-400 text-xs">Check back later for new survey opportunities!</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 mb-8">
+    <div className="space-y-3 mb-4">
       {/* CPAlead Offerwall (contains surveys) - DISABLED */}
       {false && cpaleadPublisherId && (
-        <div className="card border-2 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <HelpCircle className="w-6 h-6 mr-2 text-blue-600" />
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-bold text-gray-800 flex items-center">
+              <HelpCircle className="w-4 h-4 mr-2 text-blue-600" />
               CPAlead Surveys
             </h2>
             <button
               onClick={() => setShowCPALead(!showCPALead)}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-1.5 px-3 rounded-lg flex items-center text-xs"
             >
               {showCPALead ? 'Hide' : 'View Surveys'}
-              <ExternalLink className="w-4 h-4 ml-2" />
+              <ExternalLink className="w-3 h-3 ml-1.5" />
             </button>
           </div>
           {showCPALead && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-3 border rounded-lg overflow-hidden">
               <CPALeadOfferwall
                 publisherId={cpaleadPublisherId}
                 userId={userId}
@@ -704,87 +916,29 @@ function SurveysCategory({
         </div>
       )}
 
-      {/* Instant Network (contains surveys) */}
-      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <HelpCircle className="w-6 h-6 mr-2 text-green-600" />
-              {instantNetwork === 'offerwallme' && 'Offerwall.me'}
-              {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
-              {instantNetwork === 'bitlabs' && 'Bitlabs'}
-              {instantNetwork === 'adgatemedia' && 'AdGate Media'}
-              {' '}Surveys
-            </h2>
-            <button
-              onClick={() => setShowInstantNetwork(!showInstantNetwork)}
-              className="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 flex items-center"
-            >
-              {showInstantNetwork ? 'Hide' : 'View Surveys'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-          {showInstantNetwork && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
-              <InstantNetworkOfferwall
-                network={instantNetwork}
-                apiKey={instantNetworkApiKey}
-                userId={userId}
-                onComplete={handleTaskComplete}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* OfferToro (contains surveys) */}
-      {offertoroApiKey && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <HelpCircle className="w-6 h-6 mr-2 text-purple-600" />
-              OfferToro Surveys
-            </h2>
-            <button
-              onClick={() => setShowOfferToro(!showOfferToro)}
-              className="btn-primary flex items-center"
-            >
-              {showOfferToro ? 'Hide' : 'View Surveys'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-          {showOfferToro && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
-              <OfferToroOfferwall
-                apiKey={offertoroApiKey}
-                userId={userId}
-                onComplete={handleTaskComplete}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* CPX Research (High-Paying Surveys) */}
       {(cpxResearchApiKey || cpxResearchOfferwallUrl) && (
-        <div className="card border-2 border-indigo-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                <HelpCircle className="w-6 h-6 mr-2 text-indigo-600" />
-                CPX Research Surveys
-              </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-indigo-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-2 rounded-lg mr-3">
+                <HelpCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">CPX Research Surveys</h2>
+                <p className="text-sm text-gray-600">High-paying surveys available!</p>
+              </div>
             </div>
             <button
               onClick={() => setShowCPXResearch(!showCPXResearch)}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 px-4 rounded-lg flex items-center ml-4"
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showCPXResearch ? 'Hide' : 'Start Surveys'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showCPXResearch && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-indigo-200 pt-6">
               <CPXResearchQuiz
                 apiKey={cpxResearchApiKey}
                 userId={userId}
@@ -804,26 +958,110 @@ function SurveysCategory({
         </div>
       )}
 
+      {/* Instant Network (contains surveys) */}
+      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+                <HelpCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">
+                  {instantNetwork === 'offerwallme' && 'Offerwall.me'}
+                  {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
+                  {instantNetwork === 'bitlabs' && 'Bitlabs'}
+                  {instantNetwork === 'adgatemedia' && 'AdGate Media'}
+                  {' '}Surveys
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {instantNetwork === 'offerwallpro' ? 'Coming Soon' : 'Complete surveys and earn points!'}
+                </p>
+              </div>
+            </div>
+            {instantNetwork === 'offerwallpro' ? (
+              <button
+                disabled
+                className="bg-gray-400 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg cursor-not-allowed flex-shrink-0 ml-4"
+              >
+                Coming Soon
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowInstantNetwork(!showInstantNetwork)}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              >
+                {showInstantNetwork ? 'Hide' : 'View Surveys'}
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </button>
+            )}
+          </div>
+          {showInstantNetwork && instantNetwork !== 'offerwallpro' && (
+            <div className="mt-6 border-t border-green-200 pt-6">
+              <InstantNetworkOfferwall
+                network={instantNetwork}
+                apiKey={instantNetworkApiKey}
+                userId={userId}
+                onComplete={handleTaskComplete}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* OfferToro (contains surveys) */}
+      {offertoroApiKey && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <HelpCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">OfferToro Surveys</h2>
+                <p className="text-sm text-gray-600">Complete surveys and earn points!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowOfferToro(!showOfferToro)}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              {showOfferToro ? 'Hide' : 'View Surveys'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+          {showOfferToro && (
+            <div className="mt-6 border-t border-purple-200 pt-6">
+              <OfferToroOfferwall
+                apiKey={offertoroApiKey}
+                userId={userId}
+                onComplete={handleTaskComplete}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Lootably (Surveys, Apps, Videos) */}
       {(lootablyApiKey || lootablyOfferwallUrl) && (
-        <div className="card border-2 border-blue-200">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-lg shadow-lg border-2 border-blue-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                <HelpCircle className="w-6 h-6 mr-2 text-blue-600" />
+              <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
+                <HelpCircle className="w-4 h-4 mr-2 text-blue-600" />
                 Lootably Surveys
               </h2>
             </div>
             <button
               onClick={() => setShowLootably(!showLootably)}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-2 px-4 rounded-lg flex items-center ml-4"
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-1.5 px-3 rounded-lg flex items-center ml-3 text-xs"
             >
               {showLootably ? 'Hide' : 'View Surveys'}
-              <ExternalLink className="w-4 h-4 ml-2" />
+              <ExternalLink className="w-3 h-3 ml-1.5" />
             </button>
           </div>
           {showLootably && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-3 border rounded-lg overflow-hidden">
               <LootablyOfferwall
                 apiKey={lootablyApiKey}
                 userId={userId}
@@ -837,24 +1075,24 @@ function SurveysCategory({
 
       {/* AdGem (Surveys, Apps, Videos) */}
       {(adgemApiKey || adgemOfferwallUrl) && (
-        <div className="card border-2 border-green-200">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                <HelpCircle className="w-6 h-6 mr-2 text-green-600" />
+              <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
+                <HelpCircle className="w-4 h-4 mr-2 text-green-600" />
                 AdGem Surveys
               </h2>
             </div>
             <button
               onClick={() => setShowAdGem(!showAdGem)}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-2 px-4 rounded-lg flex items-center ml-4"
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-1.5 px-3 rounded-lg flex items-center ml-3 text-xs"
             >
               {showAdGem ? 'Hide' : 'View Surveys'}
-              <ExternalLink className="w-4 h-4 ml-2" />
+              <ExternalLink className="w-3 h-3 ml-1.5" />
             </button>
           </div>
           {showAdGem && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-3 border rounded-lg overflow-hidden">
               <AdGemOfferwall
                 apiKey={adgemApiKey}
                 userId={userId}
@@ -870,23 +1108,23 @@ function SurveysCategory({
       {false && Array.isArray(availableTasks) && availableTasks
         .filter(offer => offer && (offer.category === 'survey' || offer.category === 'surveys'))
         .map((task) => (
-          <div key={task.id} className="card border-2 border-green-200">
-            <div className="flex items-center justify-between mb-4">
+          <div key={task.id} className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                  <HelpCircle className="w-6 h-6 mr-2 text-green-600" />
+                <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
+                  <HelpCircle className="w-4 h-4 mr-2 text-green-600" />
                   {task.title}
                 </h2>
-                <p className="text-sm text-gray-600 mb-2">{task.description}</p>
+                <p className="text-xs text-gray-600 mb-1.5">{task.description}</p>
                 {task.isAffiliate && (
-                  <span className="inline-block px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
+                  <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
                     💰 Affiliate Link
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-green-600">{task.rewardPoints}</div>
+                  <div className="text-lg font-bold text-green-600">{task.rewardPoints}</div>
                   <div className="text-xs text-gray-500">points</div>
                 </div>
                 <button
@@ -907,10 +1145,10 @@ function SurveysCategory({
                       alert('Failed to start task: ' + result.error);
                     }
                   }}
-                  className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center"
+                  className="bg-green-600 hover:bg-green-700 text-white py-1.5 px-3 rounded-lg flex items-center text-xs"
                 >
                   Start Survey
-                  <ExternalLink className="w-4 h-4 ml-2" />
+                  <ExternalLink className="w-3 h-3 ml-1.5" />
                 </button>
               </div>
             </div>
@@ -919,23 +1157,52 @@ function SurveysCategory({
 
       {/* Additional Survey Sources */}
       {surveySources.map((source, index) => (
-        <div key={index} className="card border-2 border-green-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <HelpCircle className="w-6 h-6 mr-2 text-green-600" />
-              {source.name || `${source.source} Surveys`}
-            </h2>
+        <div key={index} className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+                <HelpCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{source.name || `${source.source} Surveys`}</h2>
+                <p className="text-sm text-gray-600">Complete surveys and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
-              className="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               View Surveys
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
+        </div>
+      ))}
+
+      {/* CPAlead Individual Offers (Surveys) */}
+      {safeIndividualOffers.map((offer, index) => (
+        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <HelpCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
+                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              Start Offer
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
           </div>
-            ))}
-          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -954,6 +1221,7 @@ function VideosCategory({
   adgemApiKey,
   adgemOfferwallUrl,
   videoSources = [],
+  cpaleadIndividualOffers = [],
   availableTasks = [],
   userId,
   showCPALead,
@@ -974,42 +1242,43 @@ function VideosCategory({
 }) {
       // Safety checks
       const safeVideoSources = Array.isArray(videoSources) ? videoSources : [];
+      const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
       // Manual tasks disabled - removed videoOffers
       
       // CPAlead offerwall disabled - removed cpaleadPublisherId
-      const hasVideos = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeVideoSources.length > 0;
+      const hasVideos = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeVideoSources.length > 0 || safeIndividualOffers.length > 0;
 
   if (!hasVideos) {
     return (
-      <div className="card mb-8">
-        <div className="text-center py-12">
-          <PlayCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No video tasks available. Check back later!</p>
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <PlayCircle className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+          <p className="text-sm text-gray-500">No video tasks available. Check back later!</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 mb-8">
+    <div className="space-y-3 mb-4">
       {/* CPAlead Offerwall (contains videos) - DISABLED */}
       {false && cpaleadPublisherId && (
-        <div className="card border-2 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-bold text-gray-800 flex items-center">
+              <PlayCircle className="w-4 h-4 mr-2 text-red-600" />
               CPAlead Video Tasks
             </h2>
             <button
               onClick={() => setShowCPALead(!showCPALead)}
-              className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white py-1.5 px-3 rounded-lg flex items-center text-xs"
             >
               {showCPALead ? 'Hide' : 'View Videos'}
-              <ExternalLink className="w-4 h-4 ml-2" />
+              <ExternalLink className="w-3 h-3 ml-1.5" />
             </button>
           </div>
           {showCPALead && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-3 border rounded-lg overflow-hidden">
               <CPALeadOfferwall
                 publisherId={cpaleadPublisherId}
                 userId={userId}
@@ -1020,57 +1289,29 @@ function VideosCategory({
         </div>
       )}
 
-      {/* Instant Network (contains videos) */}
-      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
-              {instantNetwork === 'offerwallme' && 'Offerwall.me'}
-              {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
-              {instantNetwork === 'bitlabs' && 'Bitlabs'}
-              {instantNetwork === 'adgatemedia' && 'AdGate Media'}
-              {' '}Video Tasks
-            </h2>
-            <button
-              onClick={() => setShowInstantNetwork(!showInstantNetwork)}
-              className="bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 flex items-center"
-            >
-              {showInstantNetwork ? 'Hide' : 'View Videos'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-          {showInstantNetwork && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
-              <InstantNetworkOfferwall
-                network={instantNetwork}
-                apiKey={instantNetworkApiKey}
-                userId={userId}
-                onComplete={handleTaskComplete}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Ayet Studios (Video-focused) */}
       {(ayetStudiosApiKey || ayetStudiosOfferwallUrl) && (
-        <div className="card border-2 border-red-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
-              Ayet Studios Videos
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-red-600 to-orange-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">Ayet Studios Videos</h2>
+                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowAyetStudios(!showAyetStudios)}
-              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showAyetStudios ? 'Hide' : 'Watch Videos'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showAyetStudios && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-red-200 pt-6">
               <AyetStudiosOfferwall
                 apiKey={ayetStudiosApiKey}
                 userId={userId}
@@ -1088,24 +1329,80 @@ function VideosCategory({
         </div>
       )}
 
+      {/* Instant Network (contains videos) */}
+      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-red-600 to-orange-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">
+                  {instantNetwork === 'offerwallme' && 'Offerwall.me'}
+                  {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
+                  {instantNetwork === 'bitlabs' && 'Bitlabs'}
+                  {instantNetwork === 'adgatemedia' && 'AdGate Media'}
+                  {' '}Video Tasks
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {instantNetwork === 'offerwallpro' ? 'Coming Soon' : 'Watch videos and earn points!'}
+                </p>
+              </div>
+            </div>
+            {instantNetwork === 'offerwallpro' ? (
+              <button
+                disabled
+                className="bg-gray-400 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg cursor-not-allowed flex-shrink-0 ml-4"
+              >
+                Coming Soon
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowInstantNetwork(!showInstantNetwork)}
+                className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              >
+                {showInstantNetwork ? 'Hide' : 'View Videos'}
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </button>
+            )}
+          </div>
+          {showInstantNetwork && instantNetwork !== 'offerwallpro' && (
+            <div className="mt-6 border-t border-red-200 pt-6">
+              <InstantNetworkOfferwall
+                network={instantNetwork}
+                apiKey={instantNetworkApiKey}
+                userId={userId}
+                onComplete={handleTaskComplete}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Hideout.tv (Video-focused) */}
       {(hideoutTvApiKey || hideoutTvOfferwallUrl) && (
-        <div className="card border-2 border-pink-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-pink-600" />
-              Hideout.tv Videos
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-pink-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-pink-600 to-rose-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">Hideout.tv Videos</h2>
+                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowHideoutTv(!showHideoutTv)}
-              className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showHideoutTv ? 'Hide' : 'Watch Videos'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showHideoutTv && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-pink-200 pt-6">
               <HideoutTvOfferwall
                 apiKey={hideoutTvApiKey}
                 userId={userId}
@@ -1125,22 +1422,27 @@ function VideosCategory({
 
       {/* Lootably (contains videos) */}
       {(lootablyApiKey || lootablyOfferwallUrl) && (
-        <div className="card border-2 border-blue-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-blue-600" />
-              Lootably Videos
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-blue-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">Lootably Videos</h2>
+                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowLootably(!showLootably)}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showLootably ? 'Hide' : 'Watch Videos'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showLootably && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-blue-200 pt-6">
               <LootablyOfferwall
                 apiKey={lootablyApiKey}
                 userId={userId}
@@ -1160,22 +1462,27 @@ function VideosCategory({
 
       {/* AdGem (contains videos) */}
       {(adgemApiKey || adgemOfferwallUrl) && (
-        <div className="card border-2 border-green-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-green-600" />
-              AdGem Videos
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">AdGem Videos</h2>
+                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowAdGem(!showAdGem)}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showAdGem ? 'Hide' : 'Watch Videos'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showAdGem && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-green-200 pt-6">
               <AdGemOfferwall
                 apiKey={adgemApiKey}
                 userId={userId}
@@ -1195,22 +1502,27 @@ function VideosCategory({
 
       {/* OfferToro (contains videos) */}
       {offertoroApiKey && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
-              OfferToro Video Tasks
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">OfferToro Video Tasks</h2>
+                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowOfferToro(!showOfferToro)}
-              className="btn-primary flex items-center"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showOfferToro ? 'Hide' : 'View Videos'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showOfferToro && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-purple-200 pt-6">
               <OfferToroOfferwall
                 apiKey={offertoroApiKey}
                 userId={userId}
@@ -1225,23 +1537,23 @@ function VideosCategory({
       {false && Array.isArray(availableTasks) && availableTasks
         .filter(offer => offer && (offer.category === 'video' || offer.category === 'videos'))
         .map((task) => (
-          <div key={task.id} className="card border-2 border-red-200">
-            <div className="flex items-center justify-between mb-4">
+          <div key={task.id} className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                  <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
+                <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
+                  <PlayCircle className="w-4 h-4 mr-2 text-red-600" />
                   {task.title}
                 </h2>
-                <p className="text-sm text-gray-600 mb-2">{task.description}</p>
+                <p className="text-xs text-gray-600 mb-1.5">{task.description}</p>
                 {task.isAffiliate && (
-                  <span className="inline-block px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
+                  <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
                     💰 Affiliate Link
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-red-600">{task.rewardPoints}</div>
+                  <div className="text-lg font-bold text-red-600">{task.rewardPoints}</div>
                   <div className="text-xs text-gray-500">points</div>
                 </div>
                 <button
@@ -1262,10 +1574,10 @@ function VideosCategory({
                       alert('Failed to start task: ' + result.error);
                     }
                   }}
-                  className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg flex items-center"
+                  className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-lg flex items-center text-xs"
                 >
                   Watch Video
-                  <ExternalLink className="w-4 h-4 ml-2" />
+                  <ExternalLink className="w-3 h-3 ml-1.5" />
                 </button>
               </div>
             </div>
@@ -1274,17 +1586,46 @@ function VideosCategory({
 
       {/* Additional Video Sources */}
       {videoSources.map((source, index) => (
-        <div key={index} className="card border-2 border-red-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <PlayCircle className="w-6 h-6 mr-2 text-red-600" />
-              {source.name || `${source.source} Videos`}
-            </h2>
+        <div key={index} className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-red-600 to-orange-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{source.name || `${source.source} Videos`}</h2>
+                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
-              className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               View Videos
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {/* CPAlead Individual Offers (Videos) */}
+      {safeIndividualOffers.map((offer, index) => (
+        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <PlayCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
+                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              Start Offer
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
@@ -1305,6 +1646,7 @@ function AppsCategory({
   adgemApiKey,
   adgemOfferwallUrl,
   appSources = [],
+  cpaleadIndividualOffers = [],
   availableTasks = [],
   userId,
   showCPALead,
@@ -1321,46 +1663,67 @@ function AppsCategory({
 }) {
       // Safety checks
       const safeAppSources = Array.isArray(appSources) ? appSources : [];
+      const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
       // Manual tasks disabled - removed appOffers
       
-      const hasApps = cpaleadPublisherId || (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeAppSources.length > 0;
+      const hasApps = cpaleadPublisherId || (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeAppSources.length > 0 || safeIndividualOffers.length > 0;
 
   if (!hasApps) {
     return (
-      <div className="card mb-8">
-        <div className="text-center py-12">
-          <Smartphone className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No app installation tasks available. Check back later!</p>
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <div className="relative inline-flex items-center justify-center mb-3">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-gray-100 p-4 rounded-lg">
+              <Smartphone className="w-10 h-10 text-gray-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm font-medium mb-1">No app installation tasks available</p>
+          <p className="text-gray-400 text-xs">Check back later for new app opportunities!</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 mb-8">
+    <div className="space-y-3 mb-4">
       {/* CPAlead Offerwall (contains apps) */}
       {cpaleadPublisherId && (
-        <div className="card border-2 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Smartphone className="w-6 h-6 mr-2 text-indigo-600" />
-              CPAlead App Tasks
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">CPAlead App Tasks</h2>
+                <p className="text-sm text-gray-600">Install apps and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowCPALead(!showCPALead)}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showCPALead ? 'Hide' : 'View Apps'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showCPALead && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
-              <CPALeadOfferwall
-                publisherId={cpaleadPublisherId}
-                userId={userId}
-                onComplete={handleTaskComplete}
-              />
+            <div className="mt-6 border-t border-purple-200 pt-6">
+              {cpaleadPublisherId && userId ? (
+                <CPALeadOfferwall
+                  publisherId={cpaleadPublisherId}
+                  userId={userId}
+                  onComplete={handleTaskComplete}
+                />
+              ) : (
+                <div className="p-4 text-center bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    {!cpaleadPublisherId && '⚠️ CPAlead Publisher ID is not configured. Please add it in Admin Panel.'}
+                    {!userId && '⚠️ User ID is missing. Please refresh the page.'}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1368,26 +1731,44 @@ function AppsCategory({
 
       {/* Instant Network (contains apps) */}
       {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Smartphone className="w-6 h-6 mr-2 text-indigo-600" />
-              {instantNetwork === 'offerwallme' && 'Offerwall.me'}
-              {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
-              {instantNetwork === 'bitlabs' && 'Bitlabs'}
-              {instantNetwork === 'adgatemedia' && 'AdGate Media'}
-              {' '}App Tasks
-            </h2>
-            <button
-              onClick={() => setShowInstantNetwork(!showInstantNetwork)}
-              className="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 flex items-center"
-            >
-              {showInstantNetwork ? 'Hide' : 'View Apps'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">
+                  {instantNetwork === 'offerwallme' && 'Offerwall.me'}
+                  {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
+                  {instantNetwork === 'bitlabs' && 'Bitlabs'}
+                  {instantNetwork === 'adgatemedia' && 'AdGate Media'}
+                  {' '}App Tasks
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {instantNetwork === 'offerwallpro' ? 'Coming Soon' : 'Install apps and earn points!'}
+                </p>
+              </div>
+            </div>
+            {instantNetwork === 'offerwallpro' ? (
+              <button
+                disabled
+                className="bg-gray-400 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg cursor-not-allowed flex-shrink-0 ml-4"
+              >
+                Coming Soon
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowInstantNetwork(!showInstantNetwork)}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              >
+                {showInstantNetwork ? 'Hide' : 'View Apps'}
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </button>
+            )}
           </div>
-          {showInstantNetwork && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+          {showInstantNetwork && instantNetwork !== 'offerwallpro' && (
+            <div className="mt-6 border-t border-green-200 pt-6">
               <InstantNetworkOfferwall
                 network={instantNetwork}
                 apiKey={instantNetworkApiKey}
@@ -1401,22 +1782,27 @@ function AppsCategory({
 
       {/* OfferToro (contains apps) */}
       {offertoroApiKey && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Smartphone className="w-6 h-6 mr-2 text-indigo-600" />
-              OfferToro App Tasks
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">OfferToro App Tasks</h2>
+                <p className="text-sm text-gray-600">Install apps and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowOfferToro(!showOfferToro)}
-              className="btn-primary flex items-center"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showOfferToro ? 'Hide' : 'View Apps'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showOfferToro && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-purple-200 pt-6">
               <OfferToroOfferwall
                 apiKey={offertoroApiKey}
                 userId={userId}
@@ -1429,22 +1815,27 @@ function AppsCategory({
 
       {/* Lootably (contains apps) */}
       {(lootablyApiKey || lootablyOfferwallUrl) && (
-        <div className="card border-2 border-blue-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Smartphone className="w-6 h-6 mr-2 text-blue-600" />
-              Lootably App Tasks
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-blue-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">Lootably App Tasks</h2>
+                <p className="text-sm text-gray-600">Install apps and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowLootably(!showLootably)}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showLootably ? 'Hide' : 'View Apps'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showLootably && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-blue-200 pt-6">
               <LootablyOfferwall
                 apiKey={lootablyApiKey}
                 userId={userId}
@@ -1458,22 +1849,27 @@ function AppsCategory({
 
       {/* AdGem (contains apps) */}
       {(adgemApiKey || adgemOfferwallUrl) && (
-        <div className="card border-2 border-green-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Smartphone className="w-6 h-6 mr-2 text-green-600" />
-              AdGem App Tasks
-            </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">AdGem App Tasks</h2>
+                <p className="text-sm text-gray-600">Install apps and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowAdGem(!showAdGem)}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showAdGem ? 'Hide' : 'View Apps'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showAdGem && (
-            <div className="mt-4 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-green-200 pt-6">
               <AdGemOfferwall
                 apiKey={adgemApiKey}
                 userId={userId}
@@ -1489,23 +1885,23 @@ function AppsCategory({
       {false && Array.isArray(availableTasks) && availableTasks
         .filter(offer => offer && (offer.category === 'app' || offer.category === 'apps'))
         .map((task) => (
-          <div key={task.id} className="card border-2 border-indigo-200">
-            <div className="flex items-center justify-between mb-4">
+          <div key={task.id} className="bg-white rounded-lg shadow-lg border-2 border-indigo-200 p-4 hover:shadow-xl transition-shadow duration-300">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-2">
-                  <Smartphone className="w-6 h-6 mr-2 text-indigo-600" />
+                <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
+                  <Smartphone className="w-4 h-4 mr-2 text-indigo-600" />
                   {task.title}
                 </h2>
-                <p className="text-sm text-gray-600 mb-2">{task.description}</p>
+                <p className="text-xs text-gray-600 mb-1.5">{task.description}</p>
                 {task.isAffiliate && (
-                  <span className="inline-block px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
+                  <span className="inline-block px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded-full font-semibold">
                     💰 Affiliate Link
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-indigo-600">{task.rewardPoints}</div>
+                  <div className="text-lg font-bold text-indigo-600">{task.rewardPoints}</div>
                   <div className="text-xs text-gray-500">points</div>
                 </div>
                 <button
@@ -1526,10 +1922,10 @@ function AppsCategory({
                       alert('Failed to start task: ' + result.error);
                     }
                   }}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg flex items-center"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 px-3 rounded-lg flex items-center text-xs"
                 >
                   Install App
-                  <ExternalLink className="w-4 h-4 ml-2" />
+                  <ExternalLink className="w-3 h-3 ml-1.5" />
                 </button>
               </div>
             </div>
@@ -1538,21 +1934,50 @@ function AppsCategory({
 
       {/* Additional App Sources */}
       {appSources.map((source, index) => (
-        <div key={index} className="card border-2 border-indigo-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-              <Smartphone className="w-6 h-6 mr-2 text-indigo-600" />
-              {source.name || `${source.source} Apps`}
-          </h2>
+        <div key={index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{source.name || `${source.source} Apps`}</h2>
+                <p className="text-sm text-gray-600">Install apps and earn points!</p>
+              </div>
+            </div>
             <button
               onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg flex items-center"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               View Apps
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
+        </div>
+      ))}
+
+      {/* CPAlead Individual Offers (Apps) */}
+      {safeIndividualOffers.map((offer, index) => (
+        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <Smartphone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
+                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
+              </div>
             </div>
+            <button
+              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              Start Offer
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -1581,17 +2006,17 @@ function AvailableTaskCard({ task, userId, onStart }) {
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-all duration-200 hover:-translate-y-1 bg-white">
-      <h3 className="text-lg font-semibold text-gray-800 mb-2">{task.title}</h3>
-      <p className="text-gray-600 text-sm mb-4">{task.description}</p>
+    <div className="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 bg-white">
+      <h3 className="text-sm font-semibold text-gray-800 mb-1.5">{task.title}</h3>
+      <p className="text-gray-600 text-xs mb-3">{task.description}</p>
       <div className="flex items-center justify-between">
-        <div className="flex items-center text-purple-600 font-bold">
-          <Coins className="w-5 h-5 mr-1" />
+        <div className="flex items-center text-purple-600 font-bold text-sm">
+          <Coins className="w-4 h-4 mr-1" />
           {task.rewardPoints} points
         </div>
         <button
           onClick={handleStartTask}
-          className="btn-primary text-sm py-2 px-4"
+          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-xs py-1.5 px-3 rounded-lg"
         >
           Start Task
         </button>
@@ -1615,17 +2040,17 @@ function OngoingTaskCard({ task, onUpdate }) {
   };
 
   return (
-    <div className="border-2 border-orange-200 rounded-lg p-6 bg-orange-50 hover:shadow-lg transition-all duration-200">
-      <div className="flex items-start justify-between mb-2">
-        <h3 className="text-lg font-semibold text-gray-800 flex-1">{task.taskTitle || 'Task'}</h3>
-        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(task.status)}`}>
+    <div className="border-2 border-orange-200 rounded-lg p-3 bg-orange-50 hover:shadow-md transition-all duration-200">
+      <div className="flex items-start justify-between mb-1.5">
+        <h3 className="text-sm font-semibold text-gray-800 flex-1">{task.taskTitle || 'Task'}</h3>
+        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(task.status)}`}>
           {task.status || 'Started'}
         </span>
       </div>
-      <p className="text-gray-600 text-sm mb-4">{task.taskDescription || 'Complete this task to earn rewards'}</p>
+      <p className="text-gray-600 text-xs mb-3">{task.taskDescription || 'Complete this task to earn rewards'}</p>
       <div className="flex items-center justify-between">
-        <div className="flex items-center text-orange-600 font-bold">
-          <Coins className="w-5 h-5 mr-1" />
+        <div className="flex items-center text-orange-600 font-bold text-sm">
+          <Coins className="w-4 h-4 mr-1" />
           {task.rewardPoints || 0} points
         </div>
         <button
@@ -1634,7 +2059,7 @@ function OngoingTaskCard({ task, onUpdate }) {
               window.open(task.taskLink, '_blank', 'noopener,noreferrer');
             }
           }}
-          className="bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 text-sm transition-colors"
+          className="bg-orange-600 text-white py-1.5 px-3 rounded-lg hover:bg-orange-700 text-xs transition-colors"
         >
           Continue Task
         </button>

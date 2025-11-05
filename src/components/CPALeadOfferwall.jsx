@@ -121,17 +121,23 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
   }, [userId, onComplete, awardPointsForOffer]);
 
   if (!publisherId || !userId) {
+    console.warn('CPALeadOfferwall: Missing publisherId or userId', { publisherId, userId });
     return (
-      <div className="p-8 text-center">
-        <p className="text-gray-600 mb-4">CPAlead is not configured. Please add your Publisher ID in Admin Panel.</p>
+      <div className="p-8 text-center bg-yellow-50 border border-yellow-200 rounded-lg">
+        <p className="text-gray-600 mb-4 font-semibold">
+          {!publisherId && '⚠️ CPAlead Publisher ID is not configured. Please add it in Admin Panel.'}
+          {!userId && '⚠️ User ID is missing. Please refresh the page.'}
+        </p>
         {onClose && (
-          <button onClick={onClose} className="btn-primary">
+          <button onClick={onClose} className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
             Close
           </button>
         )}
       </div>
     );
   }
+  
+  console.log('CPALeadOfferwall: Rendering with', { publisherId, userId });
 
   // CPAlead offerwall URL format
   // Use the Direct Link URL from CPAlead dashboard
@@ -155,6 +161,8 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
     // This is the Direct Link format from CPAlead
     offerwallUrl = `https://zwidgetbv3dft.xyz/list/${cleanPublisherId}?sub=${cleanUserId}`;
   }
+  
+  console.log('CPALeadOfferwall: Generated URL', { cleanPublisherId, offerwallUrl });
 
   const handleOpenOfferwall = (e) => {
     e.preventDefault();
@@ -241,8 +249,19 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
 
       {/* Optional: Embed iframe (may have restrictions) */}
       <div className="border rounded-lg overflow-hidden bg-gray-50">
-        <div className="bg-gray-100 px-4 py-2 text-sm text-gray-600 border-b">
+        <div className="bg-gray-100 px-4 py-2 text-sm text-gray-600 border-b flex items-center justify-between">
           <p className="text-xs">Preview (Click button above for best experience)</p>
+          <button
+            onClick={() => {
+              console.log('Refreshing iframe...');
+              if (iframeRef.current) {
+                iframeRef.current.src = iframeRef.current.src;
+              }
+            }}
+            className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+          >
+            Refresh
+          </button>
         </div>
         <iframe
           ref={iframeRef}
@@ -254,7 +273,9 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
           className="border-0"
           title="CPAlead Offerwall"
           allow="payment; popups; popups-to-escape-sandbox; fullscreen"
-          style={{ pointerEvents: 'auto' }}
+          style={{ pointerEvents: 'auto', minHeight: '600px' }}
+          onLoad={() => console.log('CPALead iframe loaded successfully')}
+          onError={(e) => console.error('CPALead iframe error:', e)}
         />
       </div>
     </div>

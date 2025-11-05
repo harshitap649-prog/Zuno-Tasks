@@ -34,6 +34,7 @@ export const signUpWithEmail = async (email, password, name, referralCode = null
       totalEarned: 0,
       totalWithdrawn: 0,
       banned: false,
+      disabled: false,
       referralCode: referralCodeForUser,
       referralBonusAwarded: false,
       createdAt: serverTimestamp(),
@@ -77,11 +78,15 @@ export const signInWithEmail = async (email, password) => {
         lastWatchReset: new Date().toISOString(),
       });
     } else {
-      // Check if user is banned
+      // Check if user is banned or disabled
       const userData = userDoc.data();
       if (userData.banned) {
         await signOut(auth);
         return { success: false, error: 'Your account has been banned.' };
+      }
+      if (userData.disabled) {
+        await signOut(auth);
+        return { success: false, error: 'Your account has been disabled. Please contact support.' };
       }
       
       // Ensure referral code exists for existing users
@@ -133,11 +138,15 @@ export const signInWithGoogle = async (referralCode = null) => {
         await registerReferral(user.uid, referralCode);
       }
     } else {
-      // Check if user is banned
+      // Check if user is banned or disabled
       const userData = userDoc.data();
       if (userData.banned) {
         await signOut(auth);
         return { success: false, error: 'Your account has been banned.' };
+      }
+      if (userData.disabled) {
+        await signOut(auth);
+        return { success: false, error: 'Your account has been disabled. Please contact support.' };
       }
       
       // Ensure referral code exists for existing users

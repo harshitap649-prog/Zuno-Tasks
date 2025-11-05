@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { onAuthStateChange } from './firebase/auth';
+import { onAuthStateChange, logout } from './firebase/auth';
+import { getUserData } from './firebase/firestore';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SolveCaptchas from './pages/SolveCaptchas';
@@ -20,7 +21,21 @@ function App() {
 
   useEffect(() => {
     try {
-      const unsubscribe = onAuthStateChange((currentUser) => {
+      const unsubscribe = onAuthStateChange(async (currentUser) => {
+        if (currentUser) {
+          // Check if user is disabled or banned
+          const userDataResult = await getUserData(currentUser.uid);
+          if (userDataResult.success) {
+            const userData = userDataResult.data;
+            if (userData.disabled || userData.banned) {
+              await logout();
+              setUser(null);
+              setError(userData.disabled ? 'Your account has been disabled. Please contact support.' : 'Your account has been banned.');
+              setLoading(false);
+              return;
+            }
+          }
+        }
         setUser(currentUser);
         setLoading(false);
       });

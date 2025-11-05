@@ -3,6 +3,7 @@ import {
   getDoc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
   collection, 
   query, 
   where, 
@@ -393,6 +394,45 @@ export const adjustUserPoints = async (uid, points) => {
   }
 };
 
+export const disableUser = async (uid, disabled) => {
+  try {
+    await updateDoc(doc(db, 'users', uid), { disabled });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const deleteUser = async (uid) => {
+  try {
+    // Delete user document from Firestore
+    await deleteDoc(doc(db, 'users', uid));
+    
+    // Also delete related data (optional - you may want to keep transaction history)
+    // Delete user's transactions
+    const transactionsQuery = query(collection(db, 'transactions'), where('userId', '==', uid));
+    const transactionsSnapshot = await getDocs(transactionsQuery);
+    const deletePromises = transactionsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    // Delete user's withdrawal requests
+    const withdrawalsQuery = query(collection(db, 'withdrawRequests'), where('userId', '==', uid));
+    const withdrawalsSnapshot = await getDocs(withdrawalsQuery);
+    const withdrawalDeletePromises = withdrawalsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(withdrawalDeletePromises);
+    
+    // Delete user's support messages
+    const supportQuery = query(collection(db, 'supportMessages'), where('userId', '==', uid));
+    const supportSnapshot = await getDocs(supportQuery);
+    const supportDeletePromises = supportSnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(supportDeletePromises);
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 // Support Messages
 export const submitSupportMessage = async (uid, messageData) => {
   try {
@@ -403,7 +443,7 @@ export const submitSupportMessage = async (uid, messageData) => {
       userEmail: messageData.userEmail,
       subject: messageData.subject,
       message: messageData.message,
-      status: 'pending', // pending, read, replied, resolved
+      status: 'sent', // sent, pending, read, replied, resolved
       createdAt: serverTimestamp(),
       read: false,
       readAt: null,
@@ -422,9 +462,21 @@ export const getAllSupportMessages = async () => {
     
     const messages = [];
     querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Convert timestamp
+      const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt;
+      
+      // Convert reply timestamps if they exist
+      const replies = data.replies ? data.replies.map(reply => ({
+        ...reply,
+        createdAt: reply.createdAt?.toDate ? reply.createdAt.toDate() : reply.createdAt,
+      })) : [];
+      
       messages.push({
         id: doc.id,
-        ...doc.data(),
+        ...data,
+        createdAt,
+        replies,
       });
     });
     
@@ -442,6 +494,197 @@ export const updateSupportMessageStatus = async (messageId, status, read = true)
       read,
       readAt: read ? serverTimestamp() : null,
     });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const getUserSupportMessages = async (userId) => {
+  try {
+    const supportRef = collection(db, 'supportMessages');
+    const q = query(
+      supportRef, 
+      where('userId', '==', userId),
+      orderBy('createdAt', 'asc')
+    );
+    const querySnapshot = await getDocs(q);
+    
+    const messages = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Convert timestamp
+      const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt;
+      
+      // Convert reply timestamps if they exist
+      const replies = data.replies ? data.replies.map(reply => ({
+        ...reply,
+        createdAt: reply.createdAt?.toDate ? reply.createdAt.toDate() : reply.createdAt,
+      })) : [];
+      
+      messages.push({
+        id: doc.id,
+        ...data,
+        createdAt,
+        replies,
+      });
+    });
+    
+    return { success: true, messages };
+  } catch (error) {
+    // If the error is about missing index, try without orderBy as fallback
+    if (error.message && error.message.includes('index')) {
+      try {
+        const supportRef = collection(db, 'supportMessages');
+        const q = query(supportRef, where('userId', '==', userId));
+        const querySnapshot = await getDocs(q);
+        
+        const messages = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt;
+          const replies = data.replies ? data.replies.map(reply => ({
+            ...reply,
+            createdAt: reply.createdAt?.toDate ? reply.createdAt.toDate() : reply.createdAt,
+          })) : [];
+          
+          messages.push({
+            id: doc.id,
+            ...data,
+            createdAt,
+            replies,
+          });
+        });
+        
+        // Sort manually by createdAt (ascending - oldest first)
+        messages.sort((a, b) => {
+          const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt);
+          const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt);
+          return dateA - dateB;
+        });
+        
+        return { success: true, messages };
+      } catch (fallbackError) {
+        return { success: false, error: fallbackError.message, messages: [] };
+      }
+    }
+    return { success: false, error: error.message, messages: [] };
+  }
+};
+
+export const addAdminReply = async (messageId, replyText, adminName = 'Support Team') => {
+  try {
+    const messageRef = doc(db, 'supportMessages', messageId);
+    const messageSnap = await getDoc(messageRef);
+    
+    if (!messageSnap.exists()) {
+      return { success: false, error: 'Message not found' };
+    }
+    
+    const currentData = messageSnap.data();
+    const replies = currentData.replies || [];
+    
+    // Use Date instead of serverTimestamp() for array items
+    // Firebase doesn't support serverTimestamp() inside arrays
+    const newReply = {
+      text: replyText.trim(),
+      author: adminName,
+      createdAt: new Date(), // Use regular Date instead of serverTimestamp()
+    };
+    
+    replies.push(newReply);
+    
+    await updateDoc(messageRef, {
+      replies,
+      status: 'replied',
+      read: true,
+      readAt: serverTimestamp(), // This is OK - it's not in an array
+    });
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const deleteSupportMessage = async (messageId, userId) => {
+  try {
+    const messageRef = doc(db, 'supportMessages', messageId);
+    const messageSnap = await getDoc(messageRef);
+    
+    if (!messageSnap.exists()) {
+      return { success: false, error: 'Message not found' };
+    }
+    
+    const messageData = messageSnap.data();
+    
+    // Verify that the user owns this message
+    if (messageData.userId !== userId) {
+      return { success: false, error: 'You can only delete your own messages' };
+    }
+    
+    // Check if message is less than 1 hour old
+    const createdAt = messageData.createdAt?.toDate ? messageData.createdAt.toDate() : new Date(messageData.createdAt);
+    const now = new Date();
+    const diffInHours = (now - createdAt) / (1000 * 60 * 60);
+    
+    if (diffInHours >= 1) {
+      return { success: false, error: 'Messages can only be deleted within 1 hour of sending' };
+    }
+    
+    await deleteDoc(messageRef);
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const adminDeleteSupportMessage = async (messageId) => {
+  try {
+    const messageRef = doc(db, 'supportMessages', messageId);
+    const messageSnap = await getDoc(messageRef);
+    
+    if (!messageSnap.exists()) {
+      return { success: false, error: 'Message not found' };
+    }
+    
+    // Admin can delete any message without restrictions
+    await deleteDoc(messageRef);
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const deleteAdminReply = async (messageId, replyIndex) => {
+  try {
+    const messageRef = doc(db, 'supportMessages', messageId);
+    const messageSnap = await getDoc(messageRef);
+    
+    if (!messageSnap.exists()) {
+      return { success: false, error: 'Message not found' };
+    }
+    
+    const currentData = messageSnap.data();
+    const replies = currentData.replies || [];
+    
+    // Validate reply index
+    if (replyIndex < 0 || replyIndex >= replies.length) {
+      return { success: false, error: 'Invalid reply index' };
+    }
+    
+    // Remove the specific reply from the array
+    replies.splice(replyIndex, 1);
+    
+    // Update the document with the modified replies array
+    await updateDoc(messageRef, {
+      replies: replies,
+      // Update status if all replies are deleted
+      status: replies.length === 0 && currentData.status === 'replied' ? 'read' : currentData.status,
+    });
+    
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };

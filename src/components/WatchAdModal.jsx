@@ -1,79 +1,194 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Clock, Gift } from 'lucide-react';
+import { X, PlayCircle, Volume2 } from 'lucide-react';
 
-export default function WatchAdModal({ onClose, onComplete }) {
+export default function WatchAdModal({ onClose, onComplete, userId }) {
   const [countdown, setCountdown] = useState(3);
   const [watching, setWatching] = useState(false);
-  const [adLoaded, setAdLoaded] = useState(false); // Track if ad is actually visible/loaded
-  const [adWatchTime, setAdWatchTime] = useState(0); // Track how long user watched (20 seconds needed)
+  const [adLoaded, setAdLoaded] = useState(false);
+  const [adWatchTime, setAdWatchTime] = useState(0);
+  const [adProvider, setAdProvider] = useState(null); // 'popads', 'propeller', or 'cpalead'
+  const [popAdsBannerId, setPopAdsBannerId] = useState('');
+  const [propellerZoneId, setPropellerZoneId] = useState('');
+  const [cpaleadAdUrl, setCPALeadAdUrl] = useState('');
   const adCompletedRef = useRef(false);
   const countdownTimerRef = useRef(null);
-  const popunderScriptLoadedRef = useRef(false);
+  const iframeRef = useRef(null);
+  const propellerScriptLoadedRef = useRef(false);
+  const popAdsScriptLoadedRef = useRef(false);
 
-  // Check if popunder script is already loaded (from Dashboard click handler)
+  // Load ad settings (PropellerAds priority, then CPALead)
   useEffect(() => {
-    // Script is already loaded in click handler - just verify and start timer when countdown ends
-    const existingScript = document.querySelector('script[data-adsterra-popunder]');
-    if (existingScript) {
-      console.log('✅ Popunder script already loaded from click handler');
-      popunderScriptLoadedRef.current = true;
-    } else {
-      // Fallback: Load it here if not already loaded
-      console.log('⚠️ Popunder script not found, loading now...');
-      loadAdsterraPopunderAd();
-      popunderScriptLoadedRef.current = true;
-    }
-  }, []);
+    const loadAdSettings = async () => {
+      try {
+        const { getSettings } = await import('../firebase/firestore');
+        const settings = await getSettings();
+        
+        // Priority 1: PopAds (Easiest!)
+        if (settings?.popAdsBannerId) {
+          setAdProvider('popads');
+          setPopAdsBannerId(settings.popAdsBannerId);
+          console.log('✅ Using PopAds for popunder/interstitial ads');
+          return;
+        }
+        
+        // Priority 2: PropellerAds Interstitial
+        if (settings?.propellerAdsInterstitialZoneId) {
+          setAdProvider('propeller');
+          setPropellerZoneId(settings.propellerAdsInterstitialZoneId);
+          console.log('✅ Using PropellerAds Interstitial for video/interstitial ads');
+          return;
+        }
+        
+        // Priority 3: CPALead Custom Ad URL
+        if (settings?.cpaleadCustomAdUrl) {
+          setAdProvider('cpalead');
+          const customAdUrl = settings.cpaleadCustomAdUrl;
+          const cleanUserId = userId || '';
+          const adUrl = customAdUrl.includes('?') 
+            ? `${customAdUrl}&sub=${cleanUserId}` 
+            : `${customAdUrl}?sub=${cleanUserId}`;
+          setCPALeadAdUrl(adUrl);
+          console.log('✅ Using CPAlead Custom Ad URL for video/interstitial ads');
+          return;
+        }
+        
+        // Priority 4: CPALead Offerwall URL
+        if (settings?.cpaleadPublisherId) {
+          setAdProvider('cpalead');
+          const offerwallUrl = settings.cpaleadPublisherId;
+          const cleanUserId = userId || '';
+          const adUrl = offerwallUrl.includes('?') 
+            ? `${offerwallUrl}&sub=${cleanUserId}` 
+            : `${offerwallUrl}?sub=${cleanUserId}`;
+          setCPALeadAdUrl(adUrl);
+          console.log('⚠️ Using CPAlead Offerwall URL (configure Custom Ad URL in admin for better revenue)');
+          return;
+        }
+      } catch (error) {
+        console.log('Could not load settings from Firebase:', error);
+      }
 
-  // Countdown before ad starts - then trigger popunder directly
+      // Fallback to localStorage
+      const savedPopAdsBanner = localStorage.getItem('popads_banner_id') || '';
+      if (savedPopAdsBanner) {
+        setAdProvider('popads');
+        setPopAdsBannerId(savedPopAdsBanner);
+        console.log('✅ Using PopAds from localStorage');
+        return;
+      }
+      
+      const savedPropellerInterstitial = localStorage.getItem('propeller_ads_interstitial_zone_id') || '';
+      if (savedPropellerInterstitial) {
+        setAdProvider('propeller');
+        setPropellerZoneId(savedPropellerInterstitial);
+        console.log('✅ Using PropellerAds Interstitial from localStorage');
+        return;
+      }
+      
+      const savedCustomAd = localStorage.getItem('cpalead_custom_ad_url') || '';
+      if (savedCustomAd) {
+        setAdProvider('cpalead');
+        const cleanUserId = userId || '';
+        const adUrl = savedCustomAd.includes('?') 
+          ? `${savedCustomAd}&sub=${cleanUserId}` 
+          : `${savedCustomAd}?sub=${cleanUserId}`;
+        setCPALeadAdUrl(adUrl);
+        console.log('✅ Using CPAlead Custom Ad URL from localStorage');
+        return;
+      }
+      
+      // Last fallback: offerwall URL
+      const savedOfferwall = localStorage.getItem('cpalead_publisher_id') || '';
+      if (savedOfferwall) {
+        setAdProvider('cpalead');
+        const cleanUserId = userId || '';
+        const adUrl = savedOfferwall.includes('?') 
+          ? `${savedOfferwall}&sub=${cleanUserId}` 
+          : `${savedOfferwall}?sub=${cleanUserId}`;
+        setCPALeadAdUrl(adUrl);
+        console.log('⚠️ Using CPAlead Offerwall URL from localStorage');
+      }
+    };
+
+    loadAdSettings();
+  }, [userId]);
+
+  // Load PopAds script and show popunder/interstitial ad
+  useEffect(() => {
+    if (adProvider === 'popads' && popAdsBannerId && watching && !popAdsScriptLoadedRef.current) {
+      // PopAds script for popunder/interstitial
+      const script = document.createElement('script');
+      script.src = `https://popads.net/pop.js?site=${popAdsBannerId}`;
+      script.async = true;
+      script.onload = () => {
+        console.log('✅ PopAds script loaded for banner ID:', popAdsBannerId);
+        setAdLoaded(true);
+        // PopAds will automatically show popunder when script loads
+      };
+      document.head.appendChild(script);
+      popAdsScriptLoadedRef.current = true;
+    } else if (adProvider === 'cpalead' && cpaleadAdUrl) {
+      // CPALead ads are loaded via iframe, which is handled in the render
+      setAdLoaded(true);
+    }
+  }, [adProvider, popAdsBannerId, watching]);
+
+  // Load PropellerAds script and show interstitial ad
+  useEffect(() => {
+    if (adProvider === 'propeller' && propellerZoneId && watching && !propellerScriptLoadedRef.current) {
+      // Load PropellerAds script
+      if (!window.propel_ad) {
+        const script = document.createElement('script');
+        script.src = 'https://ad.propellerads.com/script/pub.js';
+        script.async = true;
+        script.onload = () => {
+          console.log('✅ PropellerAds script loaded');
+          // Show interstitial ad after script loads
+          setTimeout(() => {
+            if (window.propel_ad && window.propel_ad.showInterstitial) {
+              try {
+                window.propel_ad.showInterstitial(propellerZoneId);
+                console.log('✅ PropellerAds interstitial ad triggered for zone:', propellerZoneId);
+                setAdLoaded(true);
+              } catch (error) {
+                console.error('Error showing PropellerAds interstitial:', error);
+                setAdLoaded(true); // Still mark as loaded to start timer
+              }
+            } else {
+              console.warn('PropellerAds showInterstitial not available');
+              setAdLoaded(true); // Still mark as loaded to start timer
+            }
+          }, 500);
+        };
+        document.head.appendChild(script);
+        propellerScriptLoadedRef.current = true;
+    } else {
+        // Script already loaded, show ad immediately
+        try {
+          if (window.propel_ad && window.propel_ad.showInterstitial) {
+            window.propel_ad.showInterstitial(propellerZoneId);
+            console.log('✅ PropellerAds interstitial ad triggered for zone:', propellerZoneId);
+            setAdLoaded(true);
+          }
+        } catch (error) {
+          console.error('Error showing PropellerAds interstitial:', error);
+          setAdLoaded(true);
+        }
+      }
+    }
+  }, [adProvider, propellerZoneId, watching]);
+
+  // Countdown before ad starts
   useEffect(() => {
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
     } else {
-      // Countdown ended - trigger popunder ad immediately
+      // Countdown ended - start watching
       setWatching(true);
       setAdWatchTime(0);
-      
-      // CRITICAL: Trigger popunder immediately after countdown
-      // The script should already be loaded from Dashboard click, but we need to ensure it triggers
-      const existingScript = document.querySelector('script[data-adsterra-popunder]');
-      
-      if (!existingScript) {
-        // Load script if not already loaded
-        loadAdsterraPopunderAd();
-      } else {
-        // Script exists - need to trigger popunder
-        // Adsterra popunders need user interaction, so we simulate it by reloading script or triggering
-        console.log('✅ Script found, attempting to trigger popunder...');
-        
-        // Try multiple methods to trigger popunder
-        window.focus();
-        
-        // Create a temporary click event to trigger popunder (required for some ad networks)
-        try {
-          const clickEvent = new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            view: window
-          });
-          document.body.dispatchEvent(clickEvent);
-        } catch (e) {
-          console.log('Could not dispatch click event:', e);
-        }
-        
-        // Try reloading script as fallback
-        setTimeout(() => {
-          const scriptClone = existingScript.cloneNode(true);
-          existingScript.parentNode?.replaceChild(scriptClone, existingScript);
-        }, 100);
-      }
-      
-      // Start watching timer immediately (popunder should open in background)
-      setTimeout(() => {
         setAdLoaded(true);
         console.log('⏱️ Starting 20-second watch timer');
-      }, 300);
     }
   }, [countdown]);
 
@@ -143,47 +258,18 @@ export default function WatchAdModal({ onClose, onComplete }) {
   }, [watching, adLoaded]);
 
 
-  const loadAdsterraPopunderAd = () => {
-    try {
-      console.log('Loading Adsterra Popunder ad...');
-      
-      // Check if script already exists to avoid duplicates
-      const existingScript = document.querySelector('script[data-adsterra-popunder]');
-      if (existingScript) {
-        console.log('Popunder script already loaded');
-        return;
-      }
-      
-      // Load Adsterra Popunder script
-      const scriptElement = document.createElement('script');
-      scriptElement.type = 'text/javascript';
-      scriptElement.src = 'https://pl27969271.effectivegatecpm.com/0c/83/73/0c837351d7acd986c96bc088d1b7cbc5.js';
-      scriptElement.async = true;
-      scriptElement.charset = 'utf-8';
-      scriptElement.setAttribute('data-adsterra-popunder', 'true');
-      
-      scriptElement.onload = () => {
-        console.log('✅ Adsterra Popunder script loaded successfully');
-      };
-      
-      scriptElement.onerror = () => {
-        console.error('❌ Failed to load Adsterra Popunder script');
-      };
-      
-      // Add script to document head
-      const head = document.head || document.getElementsByTagName('head')[0];
-      if (head) {
-        head.appendChild(scriptElement);
-      } else {
-        document.body.appendChild(scriptElement);
-      }
-      
-      console.log('Adsterra Popunder script added to page');
-      
-    } catch (error) {
-      console.error('❌ Error loading Adsterra Popunder ad:', error);
+  // Auto-complete when watch time reaches 20 seconds
+  useEffect(() => {
+    if (adWatchTime >= 20 && !adCompletedRef.current && adLoaded) {
+      adCompletedRef.current = true;
+      // Award points after watching for 20 seconds
+      setTimeout(() => {
+        if (onComplete) {
+          onComplete();
+        }
+      }, 500);
     }
-  };
+  }, [adWatchTime, adLoaded, onComplete]);
 
 
   return (
@@ -226,91 +312,114 @@ export default function WatchAdModal({ onClose, onComplete }) {
               </div>
             )}
 
-            {/* Ad Container - Adsterra Popunder Ad */}
-            <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 text-center border-2 border-purple-300 relative" style={{ minHeight: '400px' }}>
-              {/* Adsterra Popunder Ad Container */}
-              <div id="real-ad-container" className="w-full mb-4" style={{ minHeight: '400px', position: 'relative' }}>
-                {adLoaded ? (
-                  <div>
-                    {/* Adsterra Popunder Ad - Opens in new tab/window */}
-                    <div className="w-full" style={{ minHeight: '350px' }}>
-                      {/* Popunder ad has opened in background - timer is running */}
+            {/* Ad Container */}
+            <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-4 text-center border-2 border-purple-300 relative" style={{ minHeight: '500px', maxHeight: '600px' }}>
+              {adProvider === 'popads' && popAdsBannerId ? (
+                /* PopAds Popunder/Interstitial */
+                <div className="w-full h-full relative flex flex-col items-center justify-center" style={{ minHeight: '500px' }}>
+                  <div className="mb-4">
+                    <PlayCircle className="w-16 h-16 text-green-600 mx-auto mb-2" />
+                    <p className="text-lg font-bold text-gray-800 mb-2">PopAds Popunder Ad</p>
+                    <p className="text-sm text-gray-600">The ad should appear automatically in a new window</p>
+                    {adLoaded && (
+                      <p className="text-xs text-green-600 mt-2">✅ Ad loaded - Watch for 20 seconds to earn points</p>
+                    )}
+                  </div>
+                  {/* PopAds will show popunder ad automatically */}
+                  <div className="bg-white rounded-lg p-6 shadow-lg border-2 border-green-300">
+                    <p className="text-sm text-gray-700">
+                      If the ad didn't appear, please check your popup blocker settings.
+                    </p>
+                  </div>
+                </div>
+              ) : adProvider === 'propeller' && propellerZoneId ? (
+                /* PropellerAds Interstitial */
+                <div className="w-full h-full relative flex flex-col items-center justify-center" style={{ minHeight: '500px' }}>
+                  <div className="mb-4">
+                    <PlayCircle className="w-16 h-16 text-orange-600 mx-auto mb-2" />
+                    <p className="text-lg font-bold text-gray-800 mb-2">PropellerAds Interstitial Ad</p>
+                    <p className="text-sm text-gray-600">The ad should appear automatically in a new window</p>
+                    {adLoaded && (
+                      <p className="text-xs text-green-600 mt-2">✅ Ad loaded - Watch for 20 seconds to earn points</p>
+                    )}
+                  </div>
+                  {/* PropellerAds will show interstitial ad in a popup/new window */}
+                  <div className="bg-white rounded-lg p-6 shadow-lg border-2 border-orange-300">
+                    <p className="text-sm text-gray-700">
+                      If the ad didn't appear, please check your popup blocker settings.
+                    </p>
+                  </div>
                     </div>
-                    
-                    {/* Simplified Status Overlay - No timer countdown */}
-                    <div className="absolute bottom-4 left-0 right-0 z-10">
-                      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg p-3 mx-auto max-w-md shadow-lg">
-                        <div className="w-full bg-white bg-opacity-30 rounded-full h-3 mb-2">
+              ) : adProvider === 'cpalead' && cpaleadAdUrl ? (
+                /* CPALead Ads iframe */
+                <div className="w-full h-full relative" style={{ minHeight: '500px' }}>
+                  <iframe
+                    ref={iframeRef}
+                    src={cpaleadAdUrl}
+                    title="CPALead Ads"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      minHeight: '500px',
+                      border: 'none',
+                      borderRadius: '8px',
+                      display: 'block'
+                    }}
+                    scrolling="auto"
+                    frameBorder="0"
+                    allow="autoplay; encrypted-media"
+                    onLoad={() => {
+                      setAdLoaded(true);
+                      console.log('✅ CPALead ads loaded');
+                    }}
+                  />
+                  
+                  {/* Progress Overlay - Fixed at bottom */}
+                  {adLoaded && (
+                    <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-4">
+                      <div className="bg-white/95 rounded-lg p-3 mx-auto max-w-md shadow-xl">
+                        <div className="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
                           <div
-                            className="bg-yellow-300 h-3 rounded-full transition-all duration-1000"
+                            className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-1000 flex items-center justify-center"
                             style={{ width: `${Math.min((adWatchTime / 20) * 100, 100)}%` }}
-                          ></div>
+                          >
+                            {adWatchTime >= 20 && (
+                              <span className="text-xs font-bold text-white">✓</span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-xs text-center opacity-90">
+                        <p className="text-xs text-center font-semibold text-gray-800">
                           {adWatchTime < 20 ? (
-                            <span>Watch more than <strong>20 seconds</strong> to earn <strong>5 points</strong></span>
+                            <span>⏱️ Watch for <strong>{20 - adWatchTime}</strong> more seconds to earn <strong>5 points</strong></span>
                           ) : (
-                            <span>✅ Complete! You've earned <strong>5 points</strong>!</span>
+                            <span className="text-green-600">✅ Complete! You've earned <strong>5 points</strong>!</span>
                           )}
                         </p>
                       </div>
                     </div>
-                    
-                    {/* Background Placeholder */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-gradient-to-br from-blue-900 via-purple-900 to-pink-900 rounded-xl overflow-hidden" style={{ zIndex: 0 }}>
-                      <div className="text-6xl mb-4 animate-bounce">📺</div>
-                      <h2 className="text-2xl font-bold mb-2">Adsterra Popunder Ad</h2>
-                      <p className="text-sm opacity-75 mb-2">Ad opened in new tab/window</p>
-                      <p className="text-xs opacity-60">Watch for 20 seconds to earn points</p>
-                    </div>
+                  )}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full">
                     <div className="mb-6">
                       <div className="animate-spin rounded-full h-20 w-20 border-t-4 border-b-4 border-purple-600 mx-auto"></div>
                     </div>
-                    <p className="text-2xl font-bold text-purple-600 mb-2">📺 Loading Adsterra Ad</p>
+                  <p className="text-xl font-bold text-purple-600 mb-2">📺 Loading Ads</p>
                     <p className="text-sm text-gray-600">
-                      Opening popunder ad in background...
+                    Please configure PropellerAds or CPALead in admin settings
                     </p>
                 </div>
               )}
-                </div>
             </div>
 
             {/* Instructions */}
-            {adLoaded ? (
-              <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3">
-                <p className="text-xs text-green-800 text-center">
-                  ⏱️ <strong>Popunder Ad Active:</strong> The ad opened in a new tab/window. Watch for more than <strong>20 seconds</strong> to earn <strong>5 points</strong>. 
-                  {adWatchTime < 20 && ` Current: ${adWatchTime}/20 seconds.`}
-                  {adWatchTime >= 20 && ` ✅ You've completed the requirement!`}
+            {adLoaded && (
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-800 text-center">
+                  📺 <strong>{adProvider === 'popads' ? 'PopAds' : adProvider === 'propeller' ? 'PropellerAds' : 'CPALead'} Ads Active:</strong> Watch the ads for <strong>20 seconds</strong> to earn <strong>5 points</strong>. 
+                  {adWatchTime < 20 && ` Progress: ${adWatchTime}/20 seconds`}
+                  {adWatchTime >= 20 && ` ✅ Points will be awarded automatically!`}
                 </p>
-              </div>
-            ) : (
-              <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-xs text-yellow-800 text-center mb-3">
-                  ⏳ <strong>Please Wait:</strong> The popunder ad is loading. If the ad doesn't open automatically, click the button below.
-                </p>
-                <button
-                  onClick={() => {
-                    // Try to manually trigger popunder
-                    const script = document.querySelector('script[data-adsterra-popunder]');
-                    if (script && script.src) {
-                      // Reload script to trigger popunder
-                      const newScript = document.createElement('script');
-                      newScript.src = script.src;
-                      newScript.async = true;
-                      document.head.appendChild(newScript);
-                    }
-                    // Start timer anyway
-                    setAdLoaded(true);
-                    window.focus();
-                  }}
-                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                >
-                  Click Here if Ad Didn't Open
-                </button>
               </div>
             )}
           </div>

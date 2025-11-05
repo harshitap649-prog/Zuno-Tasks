@@ -396,6 +396,7 @@ export default function CPALeadQuiz({ quizUrl, userId, onClose, onComplete }) {
             <p className="text-xs text-purple-700 mb-2">
               ✓ Complete offers within quizzes to unlock more earnings.
               <br />✓ Solve one quiz and get <span className="font-bold text-purple-900">5 points</span> automatically!
+              <br />✓ Don't solve repeated quizzes again and again - it will not grant points.
             </p>
           </div>
         </div>
