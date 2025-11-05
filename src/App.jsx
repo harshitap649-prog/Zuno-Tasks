@@ -21,28 +21,42 @@ function App() {
 
   useEffect(() => {
     try {
+      console.log('🔍 Setting up auth state listener...');
       const unsubscribe = onAuthStateChange(async (currentUser) => {
+        console.log('👤 Auth state changed, user:', currentUser ? currentUser.uid : 'null');
+        
         if (currentUser) {
           // Check if user is disabled or banned
-          const userDataResult = await getUserData(currentUser.uid);
-          if (userDataResult.success) {
-            const userData = userDataResult.data;
-            if (userData.disabled || userData.banned) {
-              await logout();
-              setUser(null);
-              setError(userData.disabled ? 'Your account has been disabled. Please contact support.' : 'Your account has been banned.');
-              setLoading(false);
-              return;
+          try {
+            const userDataResult = await getUserData(currentUser.uid);
+            if (userDataResult.success) {
+              const userData = userDataResult.data;
+              if (userData.disabled || userData.banned) {
+                console.warn('⚠️ User is banned/disabled, logging out...');
+                await logout();
+                setUser(null);
+                setError(userData.disabled ? 'Your account has been disabled. Please contact support.' : 'Your account has been banned.');
+                setLoading(false);
+                return;
+              }
             }
+          } catch (dbError) {
+            console.warn('⚠️ Could not fetch user data (non-critical):', dbError);
+            // Continue with login even if we can't fetch user data
           }
         }
+        
         setUser(currentUser);
         setLoading(false);
+        console.log('✅ Auth state updated, user set to:', currentUser ? currentUser.uid : 'null');
       });
 
-      return () => unsubscribe();
+      return () => {
+        console.log('🔍 Cleaning up auth state listener');
+        unsubscribe();
+      };
     } catch (err) {
-      console.error('Firebase auth error:', err);
+      console.error('❌ Firebase auth error:', err);
       setError(err.message);
       setLoading(false);
     }
@@ -78,7 +92,7 @@ function App() {
           <Routes>
             <Route 
               path="/login" 
-              element={user ? <Navigate to="/dashboard" /> : <Login />} 
+              element={user ? <Navigate to="/dashboard" replace /> : <Login />} 
             />
             <Route 
               path="/dashboard" 

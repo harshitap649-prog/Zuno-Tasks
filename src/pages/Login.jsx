@@ -41,8 +41,9 @@ export default function Login() {
       'auth/invalid-credential': 'Invalid email or password. Please check your credentials and try again.',
       'auth/too-many-requests': 'Too many failed attempts. Please try again later or reset your password.',
       'auth/network-request-failed': 'Network error. Please check your internet connection and try again.',
-      'auth/popup-closed-by-user': 'Sign-in popup was closed. Please try again.',
-      'auth/cancelled-popup-request': 'Sign-in was cancelled. Please try again.',
+      'auth/popup-closed-by-user': '',
+      'auth/cancelled-popup-request': '',
+      'auth/popup-blocked': 'Popup was blocked by browser. Please allow popups for this site or use email/password sign-in.',
     };
 
     // Check if we have a mapped message
@@ -97,26 +98,41 @@ export default function Login() {
 
     setLoading(true);
 
-    let result;
-    if (isLogin) {
-      // Clear any stored referral code on login (referrals only work for new signups)
-      localStorage.removeItem('pendingReferralCode');
-      result = await signInWithEmail(email, password);
-    } else {
-      // Get referral code from URL or localStorage (only for new signups)
-      const refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode');
-      result = await signUpWithEmail(email, password, name, refCode);
-      // Clear stored referral code after use
-      if (refCode) localStorage.removeItem('pendingReferralCode');
-    }
+    try {
+      let result;
+      if (isLogin) {
+        // Clear any stored referral code on login (referrals only work for new signups)
+        localStorage.removeItem('pendingReferralCode');
+        console.log('🔐 Attempting to sign in with email:', email);
+        result = await signInWithEmail(email, password);
+        console.log('🔐 Sign in result:', result);
+      } else {
+        // Get referral code from URL or localStorage (only for new signups)
+        const refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode');
+        console.log('📝 Attempting to sign up with email:', email);
+        result = await signUpWithEmail(email, password, name, refCode);
+        console.log('📝 Sign up result:', result);
+        // Clear stored referral code after use
+        if (refCode) localStorage.removeItem('pendingReferralCode');
+      }
 
-    setLoading(false);
-
-    if (result.success) {
-      navigate('/dashboard');
-    } else {
-      const friendlyError = getErrorMessage(result.errorCode, result.error);
-      setError(friendlyError);
+      if (result.success) {
+        console.log('✅ Authentication successful, user:', result.user?.uid);
+        setLoading(false);
+        // Small delay to ensure auth state is updated in App.jsx
+        await new Promise(resolve => setTimeout(resolve, 300));
+        console.log('✅ Navigating to dashboard');
+        navigate('/dashboard', { replace: true });
+      } else {
+        console.error('❌ Authentication failed:', result);
+        const friendlyError = getErrorMessage(result.errorCode, result.error);
+        setError(friendlyError);
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('❌ Unexpected error during authentication:', error);
+      setError('An unexpected error occurred. Please try again.');
+      setLoading(false);
     }
   };
 
@@ -125,25 +141,49 @@ export default function Login() {
     setFieldErrors({});
     setLoading(true);
 
-    // Get referral code from URL or localStorage (only for new signups)
-    let refCode = null;
-    if (!isLogin) {
-      // Only use referral code for signup, not login
-      refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode');
-      if (refCode) localStorage.removeItem('pendingReferralCode');
-    } else {
-      // Clear any stored referral code on login (referrals only work for new signups)
-      localStorage.removeItem('pendingReferralCode');
-    }
-    const result = await signInWithGoogle(refCode);
-    
-    setLoading(false);
+    try {
+      // Get referral code from URL or localStorage (only for new signups)
+      let refCode = null;
+      if (!isLogin) {
+        // Only use referral code for signup, not login
+        refCode = searchParams.get('ref') || localStorage.getItem('pendingReferralCode');
+        if (refCode) localStorage.removeItem('pendingReferralCode');
+      } else {
+        // Clear any stored referral code on login (referrals only work for new signups)
+        localStorage.removeItem('pendingReferralCode');
+      }
+      
+      console.log('🔐 Attempting Google sign-in...');
+      const result = await signInWithGoogle(refCode);
+      console.log('🔐 Google sign-in result:', result);
+      
+      setLoading(false);
 
-    if (result.success) {
-      navigate('/dashboard');
-    } else {
-      const friendlyError = getErrorMessage(result.errorCode, result.error);
-      setError(friendlyError || 'Google sign-in failed. Please try again.');
+      if (result.success) {
+        console.log('✅ Google authentication successful, user:', result.user?.uid);
+        // Small delay to ensure auth state is updated in App.jsx
+        await new Promise(resolve => setTimeout(resolve, 300));
+        console.log('✅ Navigating to dashboard');
+        navigate('/dashboard', { replace: true });
+      } else {
+        console.error('❌ Google sign-in failed:', result);
+        // Don't show error if user just closed the popup (they can try again)
+        if (result.errorCode === 'auth/popup-closed-by-user' || result.errorCode === 'auth/cancelled-popup-request') {
+          // Silently fail - user can try again
+          setError('');
+          setLoading(false);
+        } else if (result.errorCode === 'auth/popup-blocked') {
+          // Show helpful message for blocked popup
+          setError('Popup was blocked by browser. Please click the popup icon in your address bar to allow popups, or use email/password sign-in below.');
+        } else {
+          const friendlyError = getErrorMessage(result.errorCode, result.error);
+          setError(friendlyError || 'Google sign-in failed. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Unexpected error during Google authentication:', error);
+      setError('An unexpected error occurred. Please try again.');
+      setLoading(false);
     }
   };
 
@@ -394,7 +434,8 @@ export default function Login() {
             <button
               onClick={handleGoogleAuth}
               disabled={loading}
-              className="mt-5 w-full flex items-center justify-center px-4 py-3.5 border-2 border-gray-200 rounded-xl shadow-md bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="mt-5 w-full flex items-center justify-center px-4 py-3.5 border-2 border-gray-200 rounded-xl shadow-md bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none relative"
+              title="If popup is blocked, click the popup icon in your browser address bar to allow popups"
             >
               <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                 <path

@@ -190,7 +190,7 @@ export default function CPALeadOfferwall({ publisherId, userId, onClose, onCompl
   // pointing to your server/function that calls updateUserPoints
 
   return (
-    <div ref={containerRef} className="w-full h-full">
+    <div ref={containerRef} className="w-full h-full min-h-[400px]">
       {/* Important Info */}
       <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg">
         <div className="flex items-start gap-3">

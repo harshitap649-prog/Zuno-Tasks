@@ -819,6 +819,110 @@ export const completeTask = async (taskId, userId, rewardPoints) => {
   }
 };
 
+// Track individual offer click (for CPAlead individual offers)
+export const trackOfferClick = async (userId, offerId, offerName, offerUrl) => {
+  try {
+    const clickId = `click_${userId}_${offerId}_${Date.now()}`;
+    await setDoc(doc(db, 'offerClicks', clickId), {
+      userId,
+      offerId,
+      offerName,
+      offerUrl,
+      status: 'clicked',
+      clickedAt: serverTimestamp(),
+      claimed: false,
+      pointsAwarded: 0,
+    });
+    return { success: true, clickId };
+  } catch (error) {
+    console.error('Error tracking offer click:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Check if user has already claimed points for this offer
+export const checkOfferClaimed = async (userId, offerId) => {
+  try {
+    const q = query(
+      collection(db, 'offerClicks'),
+      where('userId', '==', userId),
+      where('offerId', '==', offerId),
+      where('claimed', '==', true)
+    );
+    const snapshot = await getDocs(q);
+    return { success: true, claimed: !snapshot.empty };
+  } catch (error) {
+    console.error('Error checking offer claim:', error);
+    return { success: false, error: error.message, claimed: false };
+  }
+};
+
+// Claim points for completed offer
+export const claimOfferPoints = async (userId, offerId, offerName, points = 30) => {
+  try {
+    // Check if already claimed
+    const claimCheck = await checkOfferClaimed(userId, offerId);
+    if (claimCheck.claimed) {
+      return { success: false, error: 'Points already claimed for this offer' };
+    }
+
+    // Find the most recent click for this offer
+    const q = query(
+      collection(db, 'offerClicks'),
+      where('userId', '==', userId),
+      where('offerId', '==', offerId),
+      where('claimed', '==', false),
+      orderBy('clickedAt', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      return { success: false, error: 'No offer click found. Please click the offer first.' };
+    }
+
+    const clickDoc = snapshot.docs[0];
+    
+    // Award points
+    const pointsResult = await updateUserPoints(userId, points, 'game_task');
+    
+    if (!pointsResult.success) {
+      return { success: false, error: pointsResult.error };
+    }
+
+    // Mark as claimed
+    await updateDoc(doc(db, 'offerClicks', clickDoc.id), {
+      claimed: true,
+      pointsAwarded: points,
+      claimedAt: serverTimestamp(),
+    });
+
+    return { success: true, pointsAwarded: points, newPoints: pointsResult.newPoints };
+  } catch (error) {
+    console.error('Error claiming offer points:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Get user's offer click history
+export const getUserOfferClicks = async (userId) => {
+  try {
+    const q = query(
+      collection(db, 'offerClicks'),
+      where('userId', '==', userId),
+      orderBy('clickedAt', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    const clicks = [];
+    snapshot.forEach((doc) => {
+      clicks.push({ id: doc.id, ...doc.data() });
+    });
+    return { success: true, clicks };
+  } catch (error) {
+    console.error('Error getting offer clicks:', error);
+    return { success: false, error: error.message, clicks: [] };
+  }
+};
+
 // Generate unique referral code
 const generateReferralCode = (uid) => {
   // Use first 8 characters of UID + random 4 characters

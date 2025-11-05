@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getActiveOffers, getUserOngoingTasks, startTask, getAdminSettings, subscribeToAdminSettings, subscribeToOffers } from '../firebase/firestore';
+import { getActiveOffers, getUserOngoingTasks, startTask, getAdminSettings, subscribeToAdminSettings, subscribeToOffers, trackOfferClick, claimOfferPoints, checkOfferClaimed } from '../firebase/firestore';
 import { Coins, Gift, Clock, ArrowLeft, ExternalLink, HelpCircle, PlayCircle, FileText, Smartphone } from 'lucide-react';
 import OfferToroOfferwall from '../components/OfferToroOfferwall';
 import InstantNetworkOfferwall from '../components/InstantNetworkOfferwall';
@@ -20,6 +20,7 @@ export default function Tasks({ user }) {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('all'); // 'games', 'quizzes', 'surveys', 'videos', 'apps', 'all'
   const [newTasksNotification, setNewTasksNotification] = useState(null);
+  const [error, setError] = useState(null);
   const previousTasksCountRef = useRef(0);
   
   // Individual component visibility states
@@ -63,11 +64,127 @@ export default function Tasks({ user }) {
   
   const navigate = useNavigate();
 
+  const loadTasks = async (skipLoadingState = false) => {
+    console.log('📋 loadTasks called, skipLoadingState:', skipLoadingState);
+    if (!skipLoadingState) {
+      setLoading(true);
+    }
+    try {
+      // Get available tasks (all active offers)
+      const offersResult = await getActiveOffers();
+      console.log('📋 Offers result:', offersResult);
+      
+      // Get ongoing tasks for this user (only if user exists)
+      let ongoingResult = { success: false, tasks: [] };
+      if (user && user.uid) {
+        try {
+          ongoingResult = await getUserOngoingTasks(user.uid);
+          console.log('📋 Ongoing tasks result:', ongoingResult);
+        } catch (ongoingError) {
+          console.error('Error getting ongoing tasks:', ongoingError);
+          ongoingResult = { success: false, tasks: [] };
+        }
+      }
+      
+      if (ongoingResult.success) {
+        setOngoingTasks(ongoingResult.tasks || []);
+        
+        // Filter out tasks that are already ongoing
+        if (offersResult.success) {
+          const ongoingOfferIds = new Set((ongoingResult.tasks || []).map(t => t.offerId));
+          const available = (offersResult.offers || []).filter(offer => !ongoingOfferIds.has(offer.id));
+          setAvailableTasks(available);
+          console.log('📋 Set available tasks:', available.length);
+        } else {
+          setAvailableTasks([]);
+        }
+      } else {
+        if (offersResult.success) {
+          setAvailableTasks(offersResult.offers || []);
+          console.log('📋 Set available tasks (no ongoing):', offersResult.offers?.length || 0);
+        } else {
+          setAvailableTasks([]);
+        }
+        setOngoingTasks([]);
+      }
+    } catch (error) {
+      console.error('❌ Error loading tasks:', error);
+      setAvailableTasks([]);
+      setOngoingTasks([]);
+      // Don't set error state - just show empty tasks
+    } finally {
+      if (!skipLoadingState) {
+        console.log('📋 Setting loading to false');
+        setLoading(false);
+      }
+    }
+  };
+
+  // Ensure activeCategory is 'all' when page loads
   useEffect(() => {
-    loadTasks();
+    console.log('📋 Setting activeCategory to "all" on page load');
+    setActiveCategory('all');
+  }, []);
+
+  useEffect(() => {
+    console.log('📋 Tasks page useEffect triggered, user:', user?.uid);
+    console.log('📋 Active category:', activeCategory);
+    
+    let unsubscribeOffers = null;
+    let unsubscribeSettings = null;
+    let isMounted = true;
+    let initTimeout = null;
+    let maxLoadingTimeout = null;
+    
+    // Ensure loading is set to false after a maximum time, even if something fails
+    maxLoadingTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('⚠️ Maximum loading timeout reached, forcing page to render');
+        setLoading(false);
+      }
+    }, 12000); // 12 second absolute maximum
+    
+    const initializePage = async () => {
+      try {
+        console.log('📋 Initializing Tasks page...');
+        // Load tasks first - with timeout to prevent infinite loading
+        if (isMounted) {
+          let timeoutFired = false;
+          initTimeout = setTimeout(() => {
+            if (isMounted && !timeoutFired) {
+              timeoutFired = true;
+              console.warn('⚠️ Tasks page loading timeout, forcing load complete');
+              setLoading(false);
+            }
+          }, 6000); // 6 second timeout
+          
+          try {
+            await Promise.race([
+              loadTasks(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Load timeout')), 5000))
+            ]);
+          } catch (loadError) {
+            console.error('❌ Error in loadTasks:', loadError);
+            // Continue anyway - we'll show empty state
+            setLoading(false);
+          }
+          
+          if (initTimeout && !timeoutFired) {
+            clearTimeout(initTimeout);
+            initTimeout = null;
+          }
+        }
+        
+        if (!isMounted) {
+          console.log('📋 Component unmounted, stopping initialization');
+          return;
+        }
+        
+        console.log('📋 Tasks loaded, proceeding to load settings...');
     
     // Load settings from Firestore (primary source) with localStorage fallback
     const loadSettings = async () => {
+          try {
       const settingsResult = await getAdminSettings();
       if (settingsResult.success && settingsResult.settings) {
         const settings = settingsResult.settings;
@@ -85,10 +202,15 @@ export default function Tasks({ user }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
-        const loadedOffers = settings.cpaleadIndividualOffers || [];
-        console.log('📋 Loading CPAlead Individual Offers from Firebase:', loadedOffers);
-        setCPALeadIndividualOffers(loadedOffers);
-        previousTasksCountRef.current = loadedOffers.length;
+              const loadedOffers = settings.cpaleadIndividualOffers || [];
+              console.log('📋 Loading CPAlead Individual Offers from Firebase:', loadedOffers.length, 'offers');
+              console.log('📋 Offers details:', JSON.stringify(loadedOffers, null, 2));
+              if (Array.isArray(loadedOffers) && loadedOffers.length > 0) {
+                console.log('📋 First offer sample:', loadedOffers[0]);
+                console.log('📋 Offer categories:', loadedOffers.map(o => ({ name: o.name, category: o.category || 'none' })));
+              }
+              setCPALeadIndividualOffers(loadedOffers);
+              previousTasksCountRef.current = loadedOffers.length;
       } else {
         // Fallback to localStorage if Firestore doesn't have settings
     const savedKey = localStorage.getItem('offertoro_api_key') || import.meta.env.VITE_OFFERTORO_API_KEY || '';
@@ -107,52 +229,71 @@ export default function Tasks({ user }) {
     setCPALeadLinkLockerUrl(savedLinkLocker);
     setCPALeadFileLockerUrl(savedFileLocker);
     setCPALeadQuizUrl(savedQuiz);
-      }
-    };
-    
-    loadSettings();
-    
-    // Subscribe to real-time updates for offers (from Firestore 'offers' collection)
-    const unsubscribeOffers = subscribeToOffers((offers) => {
-      console.log('🔄 Real-time offers update:', offers.length, 'offers');
-      
-      // Filter out tasks that are already ongoing
-      if (user && user.uid) {
-        getUserOngoingTasks(user.uid).then((ongoingResult) => {
-          if (ongoingResult.success) {
-            const ongoingOfferIds = new Set(ongoingResult.tasks.map(t => t.offerId));
-            const available = offers.filter(offer => !ongoingOfferIds.has(offer.id));
-            setAvailableTasks(available);
-            setOngoingTasks(ongoingResult.tasks);
-            
-            // Show notification if new tasks are added
-            if (previousTasksCountRef.current > 0 && available.length > previousTasksCountRef.current) {
-              const newCount = available.length - previousTasksCountRef.current;
-              setNewTasksNotification(`🎉 ${newCount} new task${newCount > 1 ? 's' : ''} available!`);
-              setTimeout(() => setNewTasksNotification(null), 5000);
             }
-            previousTasksCountRef.current = available.length;
-          } else {
-            setAvailableTasks(offers);
+          } catch (settingsError) {
+            console.error('Error loading settings:', settingsError);
+            // Continue with empty settings
           }
-        });
-      } else {
-        setAvailableTasks(offers);
+        };
         
-        // Show notification if new tasks are added
-        if (previousTasksCountRef.current > 0 && offers.length > previousTasksCountRef.current) {
-          const newCount = offers.length - previousTasksCountRef.current;
-          setNewTasksNotification(`🎉 ${newCount} new task${newCount > 1 ? 's' : ''} available!`);
-          setTimeout(() => setNewTasksNotification(null), 5000);
+        await loadSettings();
+        
+        if (!isMounted) return;
+        
+        // Subscribe to real-time updates for offers (from Firestore 'offers' collection)
+        try {
+          unsubscribeOffers = subscribeToOffers((offers) => {
+            if (!isMounted) return;
+            console.log('🔄 Real-time offers update:', offers.length, 'offers');
+            
+            // Filter out tasks that are already ongoing
+            if (user && user.uid) {
+              getUserOngoingTasks(user.uid).then((ongoingResult) => {
+                if (!isMounted) return;
+                if (ongoingResult.success) {
+                  const ongoingOfferIds = new Set(ongoingResult.tasks.map(t => t.offerId));
+                  const available = offers.filter(offer => !ongoingOfferIds.has(offer.id));
+                  setAvailableTasks(available);
+                  setOngoingTasks(ongoingResult.tasks);
+                  
+                  // Show notification if new tasks are added
+                  if (previousTasksCountRef.current > 0 && available.length > previousTasksCountRef.current) {
+                    const newCount = available.length - previousTasksCountRef.current;
+                    setNewTasksNotification(`🎉 ${newCount} new task${newCount > 1 ? 's' : ''} available!`);
+                    setTimeout(() => setNewTasksNotification(null), 5000);
+                  }
+                  previousTasksCountRef.current = available.length;
+                } else {
+                  setAvailableTasks(offers);
+                }
+              }).catch(err => {
+                console.error('Error getting ongoing tasks:', err);
+                if (isMounted) setAvailableTasks(offers);
+              });
+            } else {
+              setAvailableTasks(offers);
+              
+              // Show notification if new tasks are added
+              if (previousTasksCountRef.current > 0 && offers.length > previousTasksCountRef.current) {
+                const newCount = offers.length - previousTasksCountRef.current;
+                setNewTasksNotification(`🎉 ${newCount} new task${newCount > 1 ? 's' : ''} available!`);
+                setTimeout(() => setNewTasksNotification(null), 5000);
+              }
+              previousTasksCountRef.current = offers.length;
+            }
+          });
+        } catch (offersError) {
+          console.error('Error subscribing to offers:', offersError);
         }
-        previousTasksCountRef.current = offers.length;
-      }
-    });
-    
-    // Subscribe to real-time updates for admin settings (CPALead individual offers, etc.)
-    const unsubscribeSettings = subscribeToAdminSettings((settings) => {
+        
+        if (!isMounted) return;
+        
+        // Subscribe to real-time updates for admin settings (CPALead individual offers, etc.)
+        try {
+          unsubscribeSettings = subscribeToAdminSettings((settings) => {
+            if (!isMounted) return;
       if (settings) {
-        console.log('🔄 Real-time admin settings update');
+              console.log('🔄 Real-time admin settings update');
         setOffertoroApiKey(settings.offertoroApiKey || '');
         setInstantNetwork(settings.instantNetwork || '');
         setInstantNetworkApiKey(settings.instantNetworkApiKey || '');
@@ -174,77 +315,60 @@ export default function Tasks({ user }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
-        const realtimeOffers = settings.cpaleadIndividualOffers || [];
-        
-        // Show notification if new individual offers are added
-        if (previousTasksCountRef.current > 0 && realtimeOffers.length > previousTasksCountRef.current) {
-          const newCount = realtimeOffers.length - previousTasksCountRef.current;
-          setNewTasksNotification(`🎉 ${newCount} new offer${newCount > 1 ? 's' : ''} added!`);
-          setTimeout(() => setNewTasksNotification(null), 5000);
-        }
-        
-        console.log('📋 Real-time update - CPAlead Individual Offers:', realtimeOffers);
-        setCPALeadIndividualOffers(realtimeOffers);
-        previousTasksCountRef.current = realtimeOffers.length;
-      }
-    });
-    
-    return () => {
-      if (unsubscribeOffers) unsubscribeOffers();
-      if (unsubscribeSettings) unsubscribeSettings();
-    };
-  }, [user]);
-
-  const loadTasks = async (skipLoadingState = false) => {
-    if (!skipLoadingState) {
-      setLoading(true);
-    }
-    try {
-      // Get available tasks (all active offers)
-      const offersResult = await getActiveOffers();
-      
-      // Get ongoing tasks for this user (only if user exists)
-      let ongoingResult = { success: false, tasks: [] };
-      if (user && user.uid) {
-        ongoingResult = await getUserOngoingTasks(user.uid);
-      }
-      
-      if (ongoingResult.success) {
-        setOngoingTasks(ongoingResult.tasks);
-        
-        // Filter out tasks that are already ongoing
-        if (offersResult.success) {
-          const ongoingOfferIds = new Set(ongoingResult.tasks.map(t => t.offerId));
-          const available = offersResult.offers.filter(offer => !ongoingOfferIds.has(offer.id));
-          setAvailableTasks(available);
-        } else {
-          setAvailableTasks([]);
-        }
-      } else {
-        if (offersResult.success) {
-          setAvailableTasks(offersResult.offers);
-        } else {
-          setAvailableTasks([]);
-        }
-        setOngoingTasks([]);
+              const realtimeOffers = settings.cpaleadIndividualOffers || [];
+              
+              // Show notification if new individual offers are added
+              if (previousTasksCountRef.current > 0 && realtimeOffers.length > previousTasksCountRef.current) {
+                const newCount = realtimeOffers.length - previousTasksCountRef.current;
+                setNewTasksNotification(`🎉 ${newCount} new offer${newCount > 1 ? 's' : ''} added!`);
+                setTimeout(() => setNewTasksNotification(null), 5000);
+              }
+              
+              console.log('📋 Real-time update - CPAlead Individual Offers:', realtimeOffers.length, 'offers');
+              console.log('📋 Real-time offers details:', JSON.stringify(realtimeOffers, null, 2));
+              if (Array.isArray(realtimeOffers) && realtimeOffers.length > 0) {
+                console.log('📋 First offer sample:', realtimeOffers[0]);
+                console.log('📋 Offer structure:', {
+                  hasId: !!realtimeOffers[0].id,
+                  hasUrl: !!realtimeOffers[0].url,
+                  hasName: !!realtimeOffers[0].name,
+                  hasCategory: !!realtimeOffers[0].category,
+                  category: realtimeOffers[0].category
+                });
+              }
+              setCPALeadIndividualOffers(realtimeOffers);
+              previousTasksCountRef.current = realtimeOffers.length;
+            }
+          });
+        } catch (settingsError) {
+          console.error('Error subscribing to admin settings:', settingsError);
       }
     } catch (error) {
-      console.error('Error loading tasks:', error);
-      try {
-        const offersResult = await getActiveOffers();
-        if (offersResult.success) {
-          setAvailableTasks(offersResult.offers);
+        console.error('❌ Critical error in Tasks page initialization:', error);
+        if (isMounted) {
+          setLoading(false);
+          setError(error.message || 'Failed to load tasks page');
         }
-      } catch (e) {
-        console.error('Error loading offers:', e);
-        setAvailableTasks([]); // Ensure it's always an array
       }
-    } finally {
-      if (!skipLoadingState) {
-        setLoading(false);
+    };
+    
+    initializePage();
+    
+    return () => {
+      console.log('🧹 Cleaning up Tasks page subscriptions');
+      clearTimeout(maxLoadingTimeout);
+      isMounted = false;
+      if (initTimeout) {
+        clearTimeout(initTimeout);
       }
-    }
-  };
+      try {
+        if (unsubscribeOffers) unsubscribeOffers();
+        if (unsubscribeSettings) unsubscribeSettings();
+      } catch (error) {
+        console.error('Error cleaning up subscriptions:', error);
+      }
+    };
+  }, [user]);
 
   // Enhanced completion handler that immediately refreshes data
   const handleTaskComplete = async (completionData) => {
@@ -274,26 +398,35 @@ export default function Tasks({ user }) {
   const hasCategoryItems = (category) => {
     // Safety check: ensure availableTasks is an array
     const safeAvailableTasks = Array.isArray(availableTasks) ? availableTasks : [];
+    const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
     
     // Manual tasks disabled - removed categoryOffers filtering
     
     switch (category) {
       case 'quizzes':
-        return cpaleadQuizUrl || (Array.isArray(quizSources) && quizSources.length > 0);
+        // Check for quiz URL, quiz sources, or individual offers with quizzes category
+        const quizOffers = safeIndividualOffers.filter(o => o.category === 'quizzes' || o.category === 'all');
+        return cpaleadQuizUrl || (Array.isArray(quizSources) && quizSources.length > 0) || quizOffers.length > 0;
       case 'surveys':
-        // CPAlead offerwall disabled - removed cpaleadPublisherId
-        return instantNetwork || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(surveySources) && surveySources.length > 0);
+        // Check for survey offerwalls or individual offers with surveys category
+        const surveyOffers = safeIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all');
+        return instantNetwork || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(surveySources) && surveySources.length > 0) || surveyOffers.length > 0;
       case 'videos':
-        // CPAlead offerwall disabled - removed cpaleadPublisherId
-        return instantNetwork || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(videoSources) && videoSources.length > 0);
+        // Check for video offerwalls or individual offers with videos category
+        const videoOffers = safeIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all');
+        return instantNetwork || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(videoSources) && videoSources.length > 0) || videoOffers.length > 0;
       case 'apps':
-        return cpaleadPublisherId || instantNetwork || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(appSources) && appSources.length > 0);
+        // Check for app offerwalls or individual offers with apps category
+        const appOffers = safeIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all');
+        return cpaleadPublisherId || instantNetwork || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(appSources) && appSources.length > 0) || appOffers.length > 0;
       case 'games':
-        const hasGames = Array.isArray(cpaleadIndividualOffers) && cpaleadIndividualOffers.length > 0;
-        console.log('🎮 hasCategoryItems(games):', hasGames, 'offers:', cpaleadIndividualOffers);
+        // Check for individual offers with games category OR no category (default to games)
+        const gameOffers = safeIndividualOffers.filter(o => !o.category || o.category === 'games' || o.category === 'all');
+        const hasGames = gameOffers.length > 0;
+        console.log('🎮 hasCategoryItems(games):', hasGames, 'game offers:', gameOffers.length, 'total offers:', safeIndividualOffers.length);
         return hasGames;
       case 'all':
-        return true;
+        return true; // Always show "All Tasks" tab
       default:
         return false;
     }
@@ -305,6 +438,34 @@ export default function Tasks({ user }) {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Please log in to view tasks.</p>
+          <button
+            onClick={() => navigate('/login')}
+            className="mt-4 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if there's a critical error
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md">
+          <p className="text-red-600 mb-4 font-semibold">Error Loading Tasks Page</p>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              loadTasks();
+            }}
+            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -319,16 +480,37 @@ export default function Tasks({ user }) {
   }, [newTasksNotification]);
 
   if (loading) {
+    console.log('📋 Tasks page is loading...');
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-600"></div>
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 text-sm">Loading tasks...</p>
+          <p className="text-gray-400 text-xs mt-2">Please wait...</p>
+          <button
+            onClick={() => {
+              console.log('📋 User clicked "Skip Loading"');
+              setLoading(false);
+            }}
+            className="mt-4 text-purple-600 hover:text-purple-700 text-sm underline"
+          >
+            Skip Loading
+          </button>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+  console.log('📋 Tasks page rendering, activeCategory:', activeCategory);
+  console.log('📋 Available tasks:', availableTasks.length);
+  console.log('📋 CPAlead individual offers:', cpaleadIndividualOffers.length);
+  console.log('📋 User:', user?.uid);
+
+  // Final safety check - ensure page always renders
+  try {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         {/* New Tasks Notification */}
         {newTasksNotification && (
           <div className="mb-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center justify-between animate-slide-down">
@@ -386,7 +568,7 @@ export default function Tasks({ user }) {
               category="games"
               activeCategory={activeCategory}
               onClick={() => setActiveCategory('games')}
-              count={Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers.length : 0}
+              count={null}
               hasItems={hasCategoryItems('games')}
             />
             <CategoryTab
@@ -395,7 +577,7 @@ export default function Tasks({ user }) {
               category="quizzes"
               activeCategory={activeCategory}
               onClick={() => setActiveCategory('quizzes')}
-              count={(cpaleadQuizUrl ? 1 : 0) + (Array.isArray(quizSources) ? quizSources.length : 0)}
+              count={null}
               hasItems={hasCategoryItems('quizzes')}
             />
             <CategoryTab
@@ -428,122 +610,164 @@ export default function Tasks({ user }) {
           </div>
         </div>
 
-        {/* Category Content */}
+        {/* Category Content - Show all categories when "All Tasks" is selected */}
       {(activeCategory === 'all' || activeCategory === 'games') && (
-        <GameTasksCategory
-          cpaleadIndividualOffers={cpaleadIndividualOffers}
-        />
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <Gift className="w-5 h-5 mr-2 text-purple-600" />
+            Game Tasks
+          </h2>
+          <GameTasksCategory
+            cpaleadIndividualOffers={(() => {
+              const filtered = cpaleadIndividualOffers.filter(o => {
+                // For "all" category, show offers with games category or no category (defaults to games)
+                // For "games" category, show only games offers
+                const category = o.category || '';
+                return !category || category === 'games' || category === 'all';
+              });
+              console.log('🎮 Filtering Game Tasks - Total offers:', cpaleadIndividualOffers.length, 'Filtered:', filtered.length);
+              console.log('🎮 Filtered offers:', filtered.map(o => ({ name: o.name, category: o.category || 'none' })));
+              return filtered;
+            })()}
+            userId={user.uid}
+            onComplete={handleTaskComplete}
+          />
+        </div>
       )}
 
       {(activeCategory === 'all' || activeCategory === 'quizzes') && (
-        <QuizzesCategory
-          cpaleadQuizUrl={cpaleadQuizUrl}
-          quizSources={quizSources}
-          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'quizzes' || o.category === 'all')}
-          userId={user.uid}
-          user={user}
-          availableTasks={availableTasks}
-          showCPALeadQuiz={showCPALeadQuiz}
-          setShowCPALeadQuiz={setShowCPALeadQuiz}
-          onComplete={handleTaskComplete}
-        />
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <FileText className="w-5 h-5 mr-2 text-purple-600" />
+            Quizzes
+          </h2>
+          <QuizzesCategory
+            cpaleadQuizUrl={cpaleadQuizUrl}
+            quizSources={quizSources}
+            cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'quizzes' || o.category === 'all')}
+            userId={user.uid}
+            user={user}
+            availableTasks={availableTasks}
+            showCPALeadQuiz={showCPALeadQuiz}
+            setShowCPALeadQuiz={setShowCPALeadQuiz}
+            onComplete={handleTaskComplete}
+          />
+        </div>
       )}
 
       {(activeCategory === 'all' || activeCategory === 'surveys') && (
-        <SurveysCategory
-          cpaleadPublisherId={cpaleadPublisherId}
-          instantNetwork={instantNetwork}
-          instantNetworkApiKey={instantNetworkApiKey}
-          offertoroApiKey={offertoroApiKey}
-          cpxResearchApiKey={cpxResearchApiKey}
-          cpxResearchOfferwallUrl={cpxResearchOfferwallUrl}
-          lootablyApiKey={lootablyApiKey}
-          lootablyOfferwallUrl={lootablyOfferwallUrl}
-          adgemApiKey={adgemApiKey}
-          adgemOfferwallUrl={adgemOfferwallUrl}
-          surveySources={surveySources}
-          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all')}
-          availableTasks={availableTasks}
-          userId={user.uid}
-          user={user}
-          showCPALead={showCPALead}
-          setShowCPALead={setShowCPALead}
-          showInstantNetwork={showInstantNetwork}
-          setShowInstantNetwork={setShowInstantNetwork}
-          showOfferToro={showOfferToro}
-          setShowOfferToro={setShowOfferToro}
-          showCPXResearch={showCPXResearch}
-          setShowCPXResearch={setShowCPXResearch}
-          showLootably={showLootably}
-          setShowLootably={setShowLootably}
-          showAdGem={showAdGem}
-          setShowAdGem={setShowAdGem}
-          onComplete={handleTaskComplete}
-        />
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <HelpCircle className="w-5 h-5 mr-2 text-purple-600" />
+            Surveys
+          </h2>
+          <SurveysCategory
+            cpaleadPublisherId={cpaleadPublisherId}
+            instantNetwork={instantNetwork}
+            instantNetworkApiKey={instantNetworkApiKey}
+            offertoroApiKey={offertoroApiKey}
+            cpxResearchApiKey={cpxResearchApiKey}
+            cpxResearchOfferwallUrl={cpxResearchOfferwallUrl}
+            lootablyApiKey={lootablyApiKey}
+            lootablyOfferwallUrl={lootablyOfferwallUrl}
+            adgemApiKey={adgemApiKey}
+            adgemOfferwallUrl={adgemOfferwallUrl}
+            surveySources={surveySources}
+            cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all')}
+            availableTasks={availableTasks}
+            userId={user.uid}
+            user={user}
+            showCPALead={showCPALead}
+            setShowCPALead={setShowCPALead}
+            showInstantNetwork={showInstantNetwork}
+            setShowInstantNetwork={setShowInstantNetwork}
+            showOfferToro={showOfferToro}
+            setShowOfferToro={setShowOfferToro}
+            showCPXResearch={showCPXResearch}
+            setShowCPXResearch={setShowCPXResearch}
+            showLootably={showLootably}
+            setShowLootably={setShowLootably}
+            showAdGem={showAdGem}
+            setShowAdGem={setShowAdGem}
+            onComplete={handleTaskComplete}
+          />
+        </div>
       )}
 
       {(activeCategory === 'all' || activeCategory === 'videos') && (
-        <VideosCategory
-          cpaleadPublisherId={cpaleadPublisherId}
-          instantNetwork={instantNetwork}
-          instantNetworkApiKey={instantNetworkApiKey}
-          offertoroApiKey={offertoroApiKey}
-          ayetStudiosApiKey={ayetStudiosApiKey}
-          ayetStudiosOfferwallUrl={ayetStudiosOfferwallUrl}
-          hideoutTvApiKey={hideoutTvApiKey}
-          hideoutTvOfferwallUrl={hideoutTvOfferwallUrl}
-          lootablyApiKey={lootablyApiKey}
-          lootablyOfferwallUrl={lootablyOfferwallUrl}
-          adgemApiKey={adgemApiKey}
-          adgemOfferwallUrl={adgemOfferwallUrl}
-          videoSources={videoSources}
-          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all')}
-          availableTasks={availableTasks}
-          userId={user.uid}
-          showCPALead={showCPALead}
-          setShowCPALead={setShowCPALead}
-          showInstantNetwork={showInstantNetwork}
-          setShowInstantNetwork={setShowInstantNetwork}
-          showOfferToro={showOfferToro}
-          setShowOfferToro={setShowOfferToro}
-          showAyetStudios={showAyetStudios}
-          setShowAyetStudios={setShowAyetStudios}
-          showHideoutTv={showHideoutTv}
-          setShowHideoutTv={setShowHideoutTv}
-          showLootably={showLootably}
-          setShowLootably={setShowLootably}
-          showAdGem={showAdGem}
-          setShowAdGem={setShowAdGem}
-          onComplete={handleTaskComplete}
-        />
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <PlayCircle className="w-5 h-5 mr-2 text-purple-600" />
+            Watch Videos
+          </h2>
+          <VideosCategory
+            cpaleadPublisherId={cpaleadPublisherId}
+            instantNetwork={instantNetwork}
+            instantNetworkApiKey={instantNetworkApiKey}
+            offertoroApiKey={offertoroApiKey}
+            ayetStudiosApiKey={ayetStudiosApiKey}
+            ayetStudiosOfferwallUrl={ayetStudiosOfferwallUrl}
+            hideoutTvApiKey={hideoutTvApiKey}
+            hideoutTvOfferwallUrl={hideoutTvOfferwallUrl}
+            lootablyApiKey={lootablyApiKey}
+            lootablyOfferwallUrl={lootablyOfferwallUrl}
+            adgemApiKey={adgemApiKey}
+            adgemOfferwallUrl={adgemOfferwallUrl}
+            videoSources={videoSources}
+            cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all')}
+            availableTasks={availableTasks}
+            userId={user.uid}
+            showCPALead={showCPALead}
+            setShowCPALead={setShowCPALead}
+            showInstantNetwork={showInstantNetwork}
+            setShowInstantNetwork={setShowInstantNetwork}
+            showOfferToro={showOfferToro}
+            setShowOfferToro={setShowOfferToro}
+            showAyetStudios={showAyetStudios}
+            setShowAyetStudios={setShowAyetStudios}
+            showHideoutTv={showHideoutTv}
+            setShowHideoutTv={setShowHideoutTv}
+            showLootably={showLootably}
+            setShowLootably={setShowLootably}
+            showAdGem={showAdGem}
+            setShowAdGem={setShowAdGem}
+            onComplete={handleTaskComplete}
+          />
+        </div>
       )}
 
       {(activeCategory === 'all' || activeCategory === 'apps') && (
-        <AppsCategory
-          cpaleadPublisherId={cpaleadPublisherId}
-          instantNetwork={instantNetwork}
-          instantNetworkApiKey={instantNetworkApiKey}
-          offertoroApiKey={offertoroApiKey}
-          lootablyApiKey={lootablyApiKey}
-          lootablyOfferwallUrl={lootablyOfferwallUrl}
-          adgemApiKey={adgemApiKey}
-          adgemOfferwallUrl={adgemOfferwallUrl}
-          appSources={appSources}
-          cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all')}
-          availableTasks={availableTasks}
-          userId={user.uid}
-          showCPALead={showCPALead}
-          setShowCPALead={setShowCPALead}
-          showInstantNetwork={showInstantNetwork}
-          setShowInstantNetwork={setShowInstantNetwork}
-          showOfferToro={showOfferToro}
-          setShowOfferToro={setShowOfferToro}
-          showLootably={showLootably}
-          setShowLootably={setShowLootably}
-          showAdGem={showAdGem}
-          setShowAdGem={setShowAdGem}
-          onComplete={handleTaskComplete}
-        />
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <Smartphone className="w-5 h-5 mr-2 text-purple-600" />
+            Install Apps
+          </h2>
+          <AppsCategory
+            cpaleadPublisherId={cpaleadPublisherId}
+            instantNetwork={instantNetwork}
+            instantNetworkApiKey={instantNetworkApiKey}
+            offertoroApiKey={offertoroApiKey}
+            lootablyApiKey={lootablyApiKey}
+            lootablyOfferwallUrl={lootablyOfferwallUrl}
+            adgemApiKey={adgemApiKey}
+            adgemOfferwallUrl={adgemOfferwallUrl}
+            appSources={appSources}
+            cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all')}
+            availableTasks={availableTasks}
+            userId={user.uid}
+            showCPALead={showCPALead}
+            setShowCPALead={setShowCPALead}
+            showInstantNetwork={showInstantNetwork}
+            setShowInstantNetwork={setShowInstantNetwork}
+            showOfferToro={showOfferToro}
+            setShowOfferToro={setShowOfferToro}
+            showLootably={showLootably}
+            setShowLootably={setShowLootably}
+            showAdGem={showAdGem}
+            setShowAdGem={setShowAdGem}
+            onComplete={handleTaskComplete}
+          />
+        </div>
       )}
 
         {/* Manual Tasks / External Offers with Referral Links - DISABLED */}
@@ -570,7 +794,24 @@ export default function Tasks({ user }) {
         )}
       </div>
     </div>
-  );
+    );
+  } catch (renderError) {
+    console.error('❌ Error rendering Tasks page:', renderError);
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+        <div className="text-center max-w-md">
+          <p className="text-red-600 mb-4 font-semibold">Error Rendering Tasks Page</p>
+          <p className="text-gray-600 mb-4">{renderError.message || 'Unknown error occurred'}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 }
 
 // Category Tab Component
@@ -599,11 +840,335 @@ function CategoryTab({ icon: Icon, label, category, activeCategory, onClick, cou
   );
 }
 
-// Game Tasks Category Component
-function GameTasksCategory({ cpaleadIndividualOffers = [] }) {
-  const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+// Individual Offer Card Component (Reusable)
+function IndividualOfferCard({ offer, userId, onComplete, icon: Icon = ExternalLink, claimedOffers, setClaimedOffers, openedOffers, setOpenedOffers, offerOpenTimes, setOfferOpenTimes, claimingOffer, setClaimingOffer }) {
+  const offerId = offer.id || offer.url;
+  const isClaimed = claimedOffers.has(offerId);
+  const isOpened = openedOffers.has(offerId);
+  const offerWindowRef = useRef(null);
+  const completionDetectedRef = useRef(false);
+  const [showClaimButton, setShowClaimButton] = useState(false);
   
-  console.log('🎮 GameTasksCategory - Received offers:', safeIndividualOffers);
+  // Listen for completion messages from CPAlead
+  useEffect(() => {
+    if (!userId || isClaimed || !isOpened) return;
+    
+    const handleMessage = async (event) => {
+      // Log all messages for debugging
+      console.log('📨 Received message from offer:', event.origin, event.data);
+      
+      // Security: Verify origin (allow CPAlead and related domains)
+      const allowedOrigins = [
+        'cpalead.com',
+        'directcpi.com',
+        'zwidget',
+        'qckclk.com',
+        'akamaicdn.org'
+      ];
+      
+      if (!allowedOrigins.some(origin => event.origin.includes(origin))) {
+        return;
+      }
+      
+      // Handle completion events - check various formats
+      if (event.data) {
+        let rewardPoints = 30; // Default reward for individual offers
+        let isComplete = false;
+        
+        // Try different data formats
+        if (typeof event.data === 'object') {
+          rewardPoints = parseInt(
+            event.data.reward || 
+            event.data.amount || 
+            event.data.payout || 
+            event.data.points || 
+            30
+          );
+          
+          // Check for completion events
+          isComplete = (
+            event.data.type === 'offer_complete' || 
+            event.data.event === 'offer_complete' ||
+            event.data.type === 'task_complete' ||
+            event.data.type === 'cpalead_complete' ||
+            event.data.status === 'complete' ||
+            event.data.completed === true ||
+            event.data.unlocked === true
+          );
+        } else if (typeof event.data === 'string') {
+          const lowerData = event.data.toLowerCase();
+          isComplete = (
+            lowerData.includes('complete') || 
+            lowerData.includes('success') || 
+            lowerData.includes('unlock') ||
+            lowerData.includes('earned') ||
+            lowerData.includes('points awarded')
+          );
+          
+          // Try to extract reward amount
+          const match = event.data.match(/(\d+)\s*points?/i);
+          if (match) {
+            rewardPoints = parseInt(match[1]);
+          }
+        }
+        
+        if (isComplete && !completionDetectedRef.current) {
+          console.log('✅ Offer completion detected via postMessage!', { offerId, rewardPoints });
+          completionDetectedRef.current = true;
+          setShowClaimButton(true);
+          
+          // Auto-claim points
+          try {
+            const result = await claimOfferPoints(userId, offerId, offer.name, rewardPoints);
+            if (result.success) {
+              alert(`🎉 Success! You earned ${rewardPoints} points! Total: ${result.newPoints} points`);
+              setClaimedOffers(prev => new Set([...prev, offerId]));
+              setOpenedOffers(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(offerId);
+                return newSet;
+              });
+              if (onComplete) {
+                onComplete({ success: true, reward: rewardPoints, points: result.newPoints });
+              }
+            } else {
+              console.warn('Auto-claim failed, showing manual claim button:', result.error);
+            }
+          } catch (error) {
+            console.error('Error auto-claiming points:', error);
+            // Show claim button for manual claim
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [userId, offerId, offer.name, isClaimed, isOpened, setClaimedOffers, setOpenedOffers, onComplete]);
+  
+  // Monitor window focus and check for completion
+  useEffect(() => {
+    if (!userId || isClaimed || !isOpened || !offerWindowRef.current) return;
+    
+    const handleFocus = async () => {
+      // When user returns to the page, check if enough time has passed
+      const openTime = offerOpenTimes.get(offerId);
+      if (openTime) {
+        const timeSinceOpen = Date.now() - openTime;
+        // If user was away for more than 30 seconds, they might have completed the offer
+        if (timeSinceOpen > 30000 && !completionDetectedRef.current) {
+          console.log('⏰ User returned after 30+ seconds, showing claim button');
+          setShowClaimButton(true);
+        }
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    // Check if offer window is still open
+    const checkWindow = setInterval(() => {
+      if (offerWindowRef.current) {
+        try {
+          if (offerWindowRef.current.closed) {
+            console.log('🪟 Offer window closed, checking for completion');
+            const openTime = offerOpenTimes.get(offerId);
+            if (openTime) {
+              const timeSinceOpen = Date.now() - openTime;
+              // If window was open for more than 30 seconds before closing, likely completed
+              if (timeSinceOpen > 30000 && !completionDetectedRef.current) {
+                console.log('✅ Window closed after 30+ seconds, showing claim button');
+                setShowClaimButton(true);
+              }
+            }
+            offerWindowRef.current = null;
+          }
+        } catch (e) {
+          // Cross-origin error, window might be closed
+          offerWindowRef.current = null;
+        }
+      }
+    }, 2000);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(checkWindow);
+    };
+  }, [userId, offerId, isClaimed, isOpened, offerOpenTimes]);
+  
+  return (
+    <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center flex-1">
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+            <Icon className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
+            <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 items-end">
+          {isClaimed ? (
+            <button
+              disabled
+              className="bg-gray-500 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center cursor-not-allowed"
+            >
+              ✓ Points Claimed
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={async () => {
+                  if (!userId) {
+                    alert('Please log in to start offers');
+                    return;
+                  }
+                  
+                  // Track the click
+                  await trackOfferClick(userId, offerId, offer.name, offer.url);
+                  
+                  // Track when offer was opened
+                  setOpenedOffers(prev => new Set([...prev, offerId]));
+                  setOfferOpenTimes(prev => new Map([...prev, [offerId, Date.now()]]));
+                  
+                  // Open offer in new tab
+                  window.open(offer.url, '_blank', 'noopener,noreferrer');
+                  
+                  // Show message
+                  alert('✅ Offer opened! Complete the task and come back to click "Claim 30 Points" to get your reward.');
+                }}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
+              >
+                Start Offer
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </button>
+              
+              {isOpened && (
+                <button
+                  onClick={async () => {
+                    if (!userId) {
+                      alert('Please log in to claim points');
+                      return;
+                    }
+                    
+                    if (claimingOffer === offerId) return;
+                    
+                    setClaimingOffer(offerId);
+                    
+                    try {
+                      const result = await claimOfferPoints(userId, offerId, offer.name, 30);
+                      
+                      if (result.success) {
+                        alert(`🎉 Success! You earned 30 points! Total: ${result.newPoints} points`);
+                        setClaimedOffers(prev => new Set([...prev, offerId]));
+                        setOpenedOffers(prev => {
+                          const newSet = new Set(prev);
+                          newSet.delete(offerId);
+                          return newSet;
+                        });
+                        if (onComplete) {
+                          onComplete({ success: true, reward: 30, points: result.newPoints });
+                        }
+                      } else {
+                        alert(`⚠️ ${result.error || 'Failed to claim points. Make sure you completed the offer first.'}`);
+                      }
+                    } catch (error) {
+                      console.error('Error claiming points:', error);
+                      alert('⚠️ An error occurred. Please try again.');
+                    } finally {
+                      setClaimingOffer(null);
+                    }
+                  }}
+                  disabled={claimingOffer === offerId}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {claimingOffer === offerId ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                      <span>Claiming...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Coins className="w-4 h-4" />
+                      <span>Claim 30 Points</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Game Tasks Category Component
+function GameTasksCategory({ cpaleadIndividualOffers = [], userId, onComplete }) {
+  const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+  const [claimedOffers, setClaimedOffers] = useState(new Set());
+  const [claimingOffer, setClaimingOffer] = useState(null);
+  
+  console.log('🎮 GameTasksCategory - Received offers:', safeIndividualOffers.length);
+  console.log('🎮 GameTasksCategory - Offers data:', JSON.stringify(safeIndividualOffers, null, 2));
+  if (safeIndividualOffers.length > 0) {
+    console.log('🎮 GameTasksCategory - First offer:', safeIndividualOffers[0]);
+    console.log('🎮 GameTasksCategory - First offer structure:', {
+      id: safeIndividualOffers[0].id,
+      name: safeIndividualOffers[0].name,
+      url: safeIndividualOffers[0].url,
+      category: safeIndividualOffers[0].category,
+      imageUrl: safeIndividualOffers[0].imageUrl,
+      platform: safeIndividualOffers[0].platform
+    });
+  }
+  
+  // Track opened offers
+  const [openedOffers, setOpenedOffers] = useState(new Set());
+  const [offerOpenTimes, setOfferOpenTimes] = useState(new Map());
+  const [showClaimButtons, setShowClaimButtons] = useState(new Set()); // Track which offers should show claim button
+  const offerWindowRefs = useRef(new Map()); // Store refs for each offer window
+  
+  // Check which offers are already claimed
+  useEffect(() => {
+    if (!userId || safeIndividualOffers.length === 0) return;
+    
+    const checkClaims = async () => {
+      const claimedSet = new Set();
+      for (const offer of safeIndividualOffers) {
+        const offerId = offer.id || offer.url;
+        const result = await checkOfferClaimed(userId, offerId);
+        if (result.claimed) {
+          claimedSet.add(offerId);
+        }
+      }
+      setClaimedOffers(claimedSet);
+    };
+    
+    checkClaims();
+  }, [userId, safeIndividualOffers]);
+  
+  // Detect when user returns to the page (after completing offer)
+  useEffect(() => {
+    const handleFocus = () => {
+      // When user returns to the page, check if enough time has passed
+      const now = Date.now();
+      offerOpenTimes.forEach((openTime, offerId) => {
+        // Enable claim button if offer was opened more than 30 seconds ago
+        if (now - openTime > 30000 && !claimedOffers.has(offerId)) {
+          // Offer might be completed, claim button is already visible
+        }
+      });
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [offerOpenTimes, claimedOffers]);
+  
+  console.log('🎮 GameTasksCategory rendering with', safeIndividualOffers.length, 'offers');
   
   if (safeIndividualOffers.length === 0) {
     return (
@@ -622,31 +1187,214 @@ function GameTasksCategory({ cpaleadIndividualOffers = [] }) {
     );
   }
 
+  // Platform color mapping
+  const getPlatformColors = (platform) => {
+    switch (platform?.toLowerCase()) {
+      case 'minecraft':
+        return { bg: 'bg-green-500', text: 'text-white', border: 'border-green-600' };
+      case 'roblox':
+        return { bg: 'bg-blue-500', text: 'text-white', border: 'border-blue-600' };
+      case 'gta5':
+      case 'gta 5':
+        return { bg: 'bg-red-500', text: 'text-white', border: 'border-red-600' };
+      case 'fortnite':
+        return { bg: 'bg-purple-500', text: 'text-white', border: 'border-purple-600' };
+      default:
+        return { bg: 'bg-gray-500', text: 'text-white', border: 'border-gray-600' };
+    }
+  };
+
+  const getPlatformLabel = (platform) => {
+    switch (platform?.toLowerCase()) {
+      case 'minecraft':
+        return 'MINECRAFT';
+      case 'roblox':
+        return 'ROBLOX';
+      case 'gta5':
+      case 'gta 5':
+        return 'GTA 5';
+      case 'fortnite':
+        return 'FORTNITE';
+      default:
+        return platform?.toUpperCase() || 'GAME';
+    }
+  };
+
   return (
-    <div className="space-y-3 mb-4">
-      {/* All CPAlead Individual Offers */}
-      {safeIndividualOffers.map((offer, index) => (
-        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
-                <Gift className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
-                <p className="text-sm text-gray-600">Complete this game offer to earn rewards!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              Start Offer
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
+    <div className="mb-6">
+      {/* Game Tasks Header */}
+      <div className="mb-4 flex justify-center">
+        <div className="flex items-center justify-center gap-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg px-6 py-3 border border-purple-200 max-w-md">
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg">
+            <Gift className="w-5 h-5 text-white" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-xl font-bold text-gray-800">
+              500+ Game Tasks
+            </h2>
+            <p className="text-xs text-gray-600">
+              Complete one offer and get 30 points for each
+            </p>
+          </div>
+          <div className="bg-purple-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+            {safeIndividualOffers.length}+
           </div>
         </div>
-      ))}
+      </div>
+
+      {/* Game Tasks Grid - CPALead Style */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {safeIndividualOffers.map((offer, index) => {
+          const platformColors = getPlatformColors(offer.platform);
+          const platformLabel = getPlatformLabel(offer.platform);
+          
+          return (
+            <div
+              key={offer.id || index}
+              className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl overflow-hidden shadow-2xl hover:shadow-purple-500/20 transition-all duration-300 transform hover:-translate-y-2 border border-gray-700 group"
+            >
+              {/* Platform Badge */}
+              {offer.platform && (
+                <div className="absolute top-3 right-3 z-10">
+                  <span className={`${platformColors.bg} ${platformColors.text} px-3 py-1 rounded-full text-xs font-bold shadow-lg border ${platformColors.border}`}>
+                    {platformLabel}
+                  </span>
+                </div>
+              )}
+
+              {/* Image/Thumbnail */}
+              <div className="relative h-48 bg-gradient-to-br from-purple-600 to-pink-600 overflow-hidden">
+                {offer.imageUrl ? (
+                  <img
+                    src={offer.imageUrl}
+                    alt={offer.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    onError={(e) => {
+                      // Fallback to gradient if image fails to load
+                      e.target.style.display = 'none';
+                      e.target.parentElement.classList.add('bg-gradient-to-br', 'from-purple-600', 'to-pink-600');
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-600 via-pink-600 to-indigo-600">
+                    <Gift className="w-16 h-16 text-white/30" />
+                  </div>
+                )}
+                {/* Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent"></div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4">
+                <h3 className="text-white font-bold text-sm mb-2 line-clamp-2 min-h-[2.5rem] group-hover:text-purple-300 transition-colors">
+                  {offer.name}
+                </h3>
+                <p className="text-gray-400 text-xs mb-4 line-clamp-2">
+                  Complete this game offer to earn rewards!
+                </p>
+                
+                {/* Action Button */}
+                {claimedOffers.has(offer.id || offer.url) ? (
+                  <button
+                    disabled
+                    className="w-full bg-gray-500 text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 cursor-not-allowed"
+                  >
+                    <span>✓ Points Claimed</span>
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      onClick={async () => {
+                        if (!userId) {
+                          alert('Please log in to start offers');
+                          return;
+                        }
+                        
+                        const offerId = offer.id || offer.url;
+                        
+                        // Track the click
+                        await trackOfferClick(userId, offerId, offer.name, offer.url);
+                        
+                        // Track when offer was opened
+                        setOpenedOffers(prev => new Set([...prev, offerId]));
+                        setOfferOpenTimes(prev => new Map([...prev, [offerId, Date.now()]]));
+                        
+                        // Open offer in new tab and store reference
+                        const newWindow = window.open(offer.url, '_blank', 'noopener,noreferrer');
+                        if (newWindow) {
+                          offerWindowRefs.current.set(offerId, newWindow);
+                        }
+                        
+                        // Show message
+                        alert('✅ Offer opened! Complete the task - points will be awarded automatically when detected, or click "Claim 30 Points" if needed.');
+                      }}
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                    >
+                      <span>Start Offer</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                    
+                    {/* Show claim button if offer was opened or completion detected */}
+                    {(openedOffers.has(offer.id || offer.url) || showClaimButtons.has(offer.id || offer.url)) && !claimedOffers.has(offer.id || offer.url) && (
+                      <button
+                        onClick={async () => {
+                          if (!userId) {
+                            alert('Please log in to claim points');
+                            return;
+                          }
+                          
+                          const offerId = offer.id || offer.url;
+                          if (claimingOffer === offerId) return;
+                          
+                          setClaimingOffer(offerId);
+                          
+                          try {
+                            const result = await claimOfferPoints(userId, offerId, offer.name, 30);
+                            
+                            if (result.success) {
+                              alert(`🎉 Success! You earned 30 points! Total: ${result.newPoints} points`);
+                              setClaimedOffers(prev => new Set([...prev, offerId]));
+                              setOpenedOffers(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(offerId);
+                                return newSet;
+                              });
+                              if (onComplete) {
+                                onComplete({ success: true, reward: 30, points: result.newPoints });
+                              }
+                            } else {
+                              alert(`⚠️ ${result.error || 'Failed to claim points. Make sure you completed the offer first.'}`);
+                            }
+                          } catch (error) {
+                            console.error('Error claiming points:', error);
+                            alert('⚠️ An error occurred. Please try again.');
+                          } finally {
+                            setClaimingOffer(null);
+                          }
+                        }}
+                        disabled={claimingOffer === (offer.id || offer.url)}
+                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2 px-3 rounded-lg flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all duration-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {claimingOffer === (offer.id || offer.url) ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                            <span>Claiming...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Coins className="w-4 h-4" />
+                            <span>Claim 30 Points</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -656,6 +1404,29 @@ function QuizzesCategory({ cpaleadQuizUrl, quizSources, cpaleadIndividualOffers 
   // Manual tasks disabled - removed quizOffers
   const safeQuizSources = Array.isArray(quizSources) ? quizSources : [];
   const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+  const [claimedOffers, setClaimedOffers] = useState(new Set());
+  const [claimingOffer, setClaimingOffer] = useState(null);
+  const [openedOffers, setOpenedOffers] = useState(new Set());
+  const [offerOpenTimes, setOfferOpenTimes] = useState(new Map());
+  
+  // Check which offers are already claimed
+  useEffect(() => {
+    if (!userId || safeIndividualOffers.length === 0) return;
+    
+    const checkClaims = async () => {
+      const claimedSet = new Set();
+      for (const offer of safeIndividualOffers) {
+        const offerId = offer.id || offer.url;
+        const result = await checkOfferClaimed(userId, offerId);
+        if (result.claimed) {
+          claimedSet.add(offerId);
+        }
+      }
+      setClaimedOffers(claimedSet);
+    };
+    
+    checkClaims();
+  }, [userId, safeIndividualOffers]);
   const hasQuizzes = cpaleadQuizUrl || safeQuizSources.length > 0 || safeIndividualOffers.length > 0;
   
   if (!hasQuizzes) {
@@ -805,26 +1576,21 @@ function QuizzesCategory({ cpaleadQuizUrl, quizSources, cpaleadIndividualOffers 
 
       {/* CPAlead Individual Offers (Quizzes) */}
       {safeIndividualOffers.map((offer, index) => (
-        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
-                <FileText className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
-                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              Start Offer
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-        </div>
+        <IndividualOfferCard
+          key={offer.id || index}
+          offer={offer}
+          userId={userId}
+          onComplete={onComplete}
+          icon={FileText}
+          claimedOffers={claimedOffers}
+          setClaimedOffers={setClaimedOffers}
+          openedOffers={openedOffers}
+          setOpenedOffers={setOpenedOffers}
+          offerOpenTimes={offerOpenTimes}
+          setOfferOpenTimes={setOfferOpenTimes}
+          claimingOffer={claimingOffer}
+          setClaimingOffer={setClaimingOffer}
+        />
       ))}
     </div>
   );
@@ -864,10 +1630,35 @@ function SurveysCategory({
       // Safety checks
       const safeSurveySources = Array.isArray(surveySources) ? surveySources : [];
       const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+      const [claimedOffers, setClaimedOffers] = useState(new Set());
+      const [claimingOffer, setClaimingOffer] = useState(null);
+      const [openedOffers, setOpenedOffers] = useState(new Set());
+      const [offerOpenTimes, setOfferOpenTimes] = useState(new Map());
+      
+      // Check which offers are already claimed
+      useEffect(() => {
+        if (!userId || safeIndividualOffers.length === 0) return;
+        
+        const checkClaims = async () => {
+          const claimedSet = new Set();
+          for (const offer of safeIndividualOffers) {
+            const offerId = offer.id || offer.url;
+            const result = await checkOfferClaimed(userId, offerId);
+            if (result.claimed) {
+              claimedSet.add(offerId);
+            }
+          }
+          setClaimedOffers(claimedSet);
+        };
+        
+        checkClaims();
+      }, [userId, safeIndividualOffers]);
       // Manual tasks disabled - removed surveyOffers
       
       // CPAlead offerwall disabled - removed cpaleadPublisherId
-      const hasSurveys = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeSurveySources.length > 0 || safeIndividualOffers.length > 0;
+      // Filter individual offers for surveys category
+      const surveyIndividualOffers = safeIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all');
+      const hasSurveys = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeSurveySources.length > 0 || surveyIndividualOffers.length > 0;
 
   if (!hasSurveys) {
     return (
@@ -987,13 +1778,13 @@ function SurveysCategory({
                 Coming Soon
               </button>
             ) : (
-              <button
-                onClick={() => setShowInstantNetwork(!showInstantNetwork)}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-              >
-                {showInstantNetwork ? 'Hide' : 'View Surveys'}
-                <ExternalLink className="w-4 h-4 ml-2" />
-              </button>
+            <button
+              onClick={() => setShowInstantNetwork(!showInstantNetwork)}
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              {showInstantNetwork ? 'Hide' : 'View Surveys'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
             )}
           </div>
           {showInstantNetwork && instantNetwork !== 'offerwallpro' && (
@@ -1176,33 +1967,28 @@ function SurveysCategory({
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
-        </div>
-      ))}
+          </div>
+            ))}
 
       {/* CPAlead Individual Offers (Surveys) */}
       {safeIndividualOffers.map((offer, index) => (
-        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
-                <HelpCircle className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
-                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              Start Offer
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-        </div>
+        <IndividualOfferCard
+          key={offer.id || index}
+          offer={offer}
+          userId={userId}
+          onComplete={onComplete}
+          icon={HelpCircle}
+          claimedOffers={claimedOffers}
+          setClaimedOffers={setClaimedOffers}
+          openedOffers={openedOffers}
+          setOpenedOffers={setOpenedOffers}
+          offerOpenTimes={offerOpenTimes}
+          setOfferOpenTimes={setOfferOpenTimes}
+          claimingOffer={claimingOffer}
+          setClaimingOffer={setClaimingOffer}
+        />
       ))}
-    </div>
+          </div>
   );
 }
 
@@ -1243,10 +2029,35 @@ function VideosCategory({
       // Safety checks
       const safeVideoSources = Array.isArray(videoSources) ? videoSources : [];
       const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+      const [claimedOffers, setClaimedOffers] = useState(new Set());
+      const [claimingOffer, setClaimingOffer] = useState(null);
+      const [openedOffers, setOpenedOffers] = useState(new Set());
+      const [offerOpenTimes, setOfferOpenTimes] = useState(new Map());
+      
+      // Check which offers are already claimed
+      useEffect(() => {
+        if (!userId || safeIndividualOffers.length === 0) return;
+        
+        const checkClaims = async () => {
+          const claimedSet = new Set();
+          for (const offer of safeIndividualOffers) {
+            const offerId = offer.id || offer.url;
+            const result = await checkOfferClaimed(userId, offerId);
+            if (result.claimed) {
+              claimedSet.add(offerId);
+            }
+          }
+          setClaimedOffers(claimedSet);
+        };
+        
+        checkClaims();
+      }, [userId, safeIndividualOffers]);
       // Manual tasks disabled - removed videoOffers
       
+      // Filter individual offers for videos category
+      const videoIndividualOffers = safeIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all');
       // CPAlead offerwall disabled - removed cpaleadPublisherId
-      const hasVideos = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeVideoSources.length > 0 || safeIndividualOffers.length > 0;
+      const hasVideos = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeVideoSources.length > 0 || videoIndividualOffers.length > 0;
 
   if (!hasVideos) {
     return (
@@ -1289,43 +2100,26 @@ function VideosCategory({
         </div>
       )}
 
-      {/* Ayet Studios (Video-focused) */}
+      {/* Ayet Studios (Video-focused) - Coming Soon */}
       {(ayetStudiosApiKey || ayetStudiosOfferwallUrl) && (
         <div className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center flex-1">
               <div className="bg-gradient-to-r from-red-600 to-orange-600 p-2 rounded-lg mr-3">
                 <PlayCircle className="w-4 h-4 text-white" />
-              </div>
+          </div>
               <div>
                 <h2 className="text-base font-bold text-gray-800 mb-0.5">Ayet Studios Videos</h2>
-                <p className="text-sm text-gray-600">Watch videos and earn points!</p>
-              </div>
+                <p className="text-sm text-gray-600">Coming Soon</p>
             </div>
+        </div>
             <button
-              onClick={() => setShowAyetStudios(!showAyetStudios)}
-              className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              disabled
+              className="bg-gray-400 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg cursor-not-allowed flex-shrink-0 ml-4"
             >
-              {showAyetStudios ? 'Hide' : 'Watch Videos'}
-              <ExternalLink className="w-4 h-4 ml-2" />
+              Coming Soon
             </button>
           </div>
-          {showAyetStudios && (
-            <div className="mt-6 border-t border-red-200 pt-6">
-              <AyetStudiosOfferwall
-                apiKey={ayetStudiosApiKey}
-                userId={userId}
-                offerwallUrl={ayetStudiosOfferwallUrl}
-                onComplete={(data) => {
-                  if (data.success) onComplete();
-                  else {
-                    alert(`Video completed! Reward: ${data.reward || 0} points`);
-                    onComplete();
-                  }
-                }}
-              />
-            </div>
-          )}
         </div>
       )}
 
@@ -1610,26 +2404,21 @@ function VideosCategory({
 
       {/* CPAlead Individual Offers (Videos) */}
       {safeIndividualOffers.map((offer, index) => (
-        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
-                <PlayCircle className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
-                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              Start Offer
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-        </div>
+        <IndividualOfferCard
+          key={offer.id || index}
+          offer={offer}
+          userId={userId}
+          onComplete={onComplete}
+          icon={PlayCircle}
+          claimedOffers={claimedOffers}
+          setClaimedOffers={setClaimedOffers}
+          openedOffers={openedOffers}
+          setOpenedOffers={setOpenedOffers}
+          offerOpenTimes={offerOpenTimes}
+          setOfferOpenTimes={setOfferOpenTimes}
+          claimingOffer={claimingOffer}
+          setClaimingOffer={setClaimingOffer}
+        />
       ))}
     </div>
   );
@@ -1664,9 +2453,34 @@ function AppsCategory({
       // Safety checks
       const safeAppSources = Array.isArray(appSources) ? appSources : [];
       const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+      const [claimedOffers, setClaimedOffers] = useState(new Set());
+      const [claimingOffer, setClaimingOffer] = useState(null);
+      const [openedOffers, setOpenedOffers] = useState(new Set());
+      const [offerOpenTimes, setOfferOpenTimes] = useState(new Map());
+      
+      // Check which offers are already claimed
+      useEffect(() => {
+        if (!userId || safeIndividualOffers.length === 0) return;
+        
+        const checkClaims = async () => {
+          const claimedSet = new Set();
+          for (const offer of safeIndividualOffers) {
+            const offerId = offer.id || offer.url;
+            const result = await checkOfferClaimed(userId, offerId);
+            if (result.claimed) {
+              claimedSet.add(offerId);
+            }
+          }
+          setClaimedOffers(claimedSet);
+        };
+        
+        checkClaims();
+      }, [userId, safeIndividualOffers]);
       // Manual tasks disabled - removed appOffers
       
-      const hasApps = cpaleadPublisherId || (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeAppSources.length > 0 || safeIndividualOffers.length > 0;
+      // Filter individual offers for apps category
+      const appIndividualOffers = safeIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all');
+      const hasApps = cpaleadPublisherId || (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeAppSources.length > 0 || appIndividualOffers.length > 0;
 
   if (!hasApps) {
     return (
@@ -1711,11 +2525,13 @@ function AppsCategory({
           {showCPALead && (
             <div className="mt-6 border-t border-purple-200 pt-6">
               {cpaleadPublisherId && userId ? (
-                <CPALeadOfferwall
-                  publisherId={cpaleadPublisherId}
-                  userId={userId}
-                  onComplete={handleTaskComplete}
-                />
+                <div className="w-full">
+                  <CPALeadOfferwall
+                    publisherId={cpaleadPublisherId}
+                    userId={userId}
+                    onComplete={onComplete || (() => {})}
+                  />
+                </div>
               ) : (
                 <div className="p-4 text-center bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm text-yellow-800">
@@ -1739,12 +2555,12 @@ function AppsCategory({
               </div>
               <div>
                 <h2 className="text-base font-bold text-gray-800 mb-0.5">
-                  {instantNetwork === 'offerwallme' && 'Offerwall.me'}
-                  {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
-                  {instantNetwork === 'bitlabs' && 'Bitlabs'}
-                  {instantNetwork === 'adgatemedia' && 'AdGate Media'}
-                  {' '}App Tasks
-                </h2>
+              {instantNetwork === 'offerwallme' && 'Offerwall.me'}
+              {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
+              {instantNetwork === 'bitlabs' && 'Bitlabs'}
+              {instantNetwork === 'adgatemedia' && 'AdGate Media'}
+              {' '}App Tasks
+            </h2>
                 <p className="text-sm text-gray-600">
                   {instantNetwork === 'offerwallpro' ? 'Coming Soon' : 'Install apps and earn points!'}
                 </p>
@@ -1758,13 +2574,13 @@ function AppsCategory({
                 Coming Soon
               </button>
             ) : (
-              <button
-                onClick={() => setShowInstantNetwork(!showInstantNetwork)}
+            <button
+              onClick={() => setShowInstantNetwork(!showInstantNetwork)}
                 className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-              >
-                {showInstantNetwork ? 'Hide' : 'View Apps'}
-                <ExternalLink className="w-4 h-4 ml-2" />
-              </button>
+            >
+              {showInstantNetwork ? 'Hide' : 'View Apps'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
             )}
           </div>
           {showInstantNetwork && instantNetwork !== 'offerwallpro' && (
@@ -1953,31 +2769,26 @@ function AppsCategory({
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
-        </div>
+            </div>
       ))}
 
       {/* CPAlead Individual Offers (Apps) */}
       {safeIndividualOffers.map((offer, index) => (
-        <div key={offer.id || index} className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
-                <Smartphone className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">{offer.name}</h2>
-                <p className="text-sm text-gray-600">Complete this offer to earn rewards!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.open(offer.url, '_blank', 'noopener,noreferrer')}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              Start Offer
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-        </div>
+        <IndividualOfferCard
+          key={offer.id || index}
+          offer={offer}
+          userId={userId}
+          onComplete={onComplete}
+          icon={Smartphone}
+          claimedOffers={claimedOffers}
+          setClaimedOffers={setClaimedOffers}
+          openedOffers={openedOffers}
+          setOpenedOffers={setOpenedOffers}
+          offerOpenTimes={offerOpenTimes}
+          setOfferOpenTimes={setOfferOpenTimes}
+          claimingOffer={claimingOffer}
+          setClaimingOffer={setClaimingOffer}
+        />
       ))}
     </div>
   );

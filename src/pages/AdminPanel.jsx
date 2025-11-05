@@ -1781,7 +1781,7 @@ function OffersTab({ offers, onReload }) {
           {/* Add New Offer Form */}
           <div className="mb-6 p-4 bg-white rounded-lg border border-purple-200">
             <h4 className="font-semibold text-gray-800 mb-3">Add New CPAlead Offer</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Offer Name</label>
                 <input
@@ -1801,6 +1801,34 @@ function OffersTab({ offers, onReload }) {
                   placeholder="https://cpalead.com/offer/..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image URL (Optional - Makes it more attractive)</label>
+                <input
+                  type="text"
+                  value={newCPALeadOffer.imageUrl || ''}
+                  onChange={(e) => setNewCPALeadOffer({ ...newCPALeadOffer, imageUrl: e.target.value })}
+                  placeholder="https://example.com/image.jpg"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs"
+                />
+                <p className="text-xs text-gray-500 mt-1">Copy image URL from CPAlead offer page</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Platform/Game</label>
+                <select
+                  value={newCPALeadOffer.platform || ''}
+                  onChange={(e) => setNewCPALeadOffer({ ...newCPALeadOffer, platform: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="">Select Platform</option>
+                  <option value="minecraft">Minecraft</option>
+                  <option value="roblox">Roblox</option>
+                  <option value="gta5">GTA 5</option>
+                  <option value="fortnite">Fortnite</option>
+                  <option value="other">Other</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
@@ -1825,7 +1853,7 @@ function OffersTab({ offers, onReload }) {
                   return;
                 }
                 setCPALeadIndividualOffers([...cpaleadIndividualOffers, { ...newCPALeadOffer, id: Date.now() }]);
-                setNewCPALeadOffer({ name: '', url: '', category: 'all' });
+                setNewCPALeadOffer({ name: '', url: '', category: 'all', imageUrl: '', platform: '' });
               }}
               className="mt-3 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700"
             >
@@ -1841,21 +1869,48 @@ function OffersTab({ offers, onReload }) {
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {cpaleadIndividualOffers.map((offer, index) => (
-                  <div key={offer.id || index} className="bg-white rounded-lg border border-purple-200 p-3 flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                  <div key={offer.id || index} className="bg-white rounded-lg border border-purple-200 p-3 flex items-center gap-3">
+                    {/* Image Preview */}
+                    {offer.imageUrl && (
+                      <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
+                        <img
+                          src={offer.imageUrl}
+                          alt={offer.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-800">{offer.name}</span>
+                        {offer.platform && (
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            offer.platform === 'minecraft' ? 'bg-green-100 text-green-700' :
+                            offer.platform === 'roblox' ? 'bg-blue-100 text-blue-700' :
+                            offer.platform === 'gta5' || offer.platform === 'gta 5' ? 'bg-red-100 text-red-700' :
+                            offer.platform === 'fortnite' ? 'bg-purple-100 text-purple-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {offer.platform.toUpperCase()}
+                          </span>
+                        )}
                         <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-semibold">
                           {offer.category === 'all' ? 'All Tasks' : offer.category === 'games' ? 'Game Tasks' : offer.category === 'quizzes' ? 'Quizzes' : offer.category === 'surveys' ? 'Surveys' : offer.category === 'videos' ? 'Videos' : 'Apps'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-1">{offer.url}</p>
+                      {offer.imageUrl && (
+                        <p className="text-xs text-blue-600 truncate mt-1">🖼️ Image: {offer.imageUrl.substring(0, 50)}...</p>
+                      )}
                     </div>
                     <button
                       onClick={() => {
                         setCPALeadIndividualOffers(cpaleadIndividualOffers.filter((_, i) => i !== index));
                       }}
-                      className="ml-3 bg-red-500 text-white py-1 px-3 rounded text-xs hover:bg-red-600"
+                      className="ml-3 bg-red-500 text-white py-1 px-3 rounded text-xs hover:bg-red-600 flex-shrink-0"
                     >
                       Delete
                     </button>

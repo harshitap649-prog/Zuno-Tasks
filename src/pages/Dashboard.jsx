@@ -401,11 +401,6 @@ export default function Dashboard({ user }) {
               </div>
               <h2 className="text-lg font-bold text-gray-800">Available Tasks</h2>
             </div>
-            {offers.length > 0 && (
-              <div className="bg-purple-100 rounded-lg px-3 py-1">
-                <span className="text-xs font-semibold text-purple-700">{offers.length} tasks available</span>
-              </div>
-            )}
           </div>
 
           {offers.length === 0 ? (
