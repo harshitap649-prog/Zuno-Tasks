@@ -113,7 +113,7 @@ export default function Withdraw({ user }) {
   const getStatusIcon = (status) => {
     switch (status) {
       case 'approved':
-        return <CheckCircle className="w-4 h-4 text-green-600" />;
+        return <CheckCircle className="w-4 h-4 text-pink-600" />;
       case 'rejected':
         return <XCircle className="w-4 h-4 text-red-600" />;
       default:
@@ -124,7 +124,7 @@ export default function Withdraw({ user }) {
   const getStatusColor = (status) => {
     switch (status) {
       case 'approved':
-        return 'bg-green-100 text-green-800';
+        return 'bg-pink-100 text-pink-800';
       case 'rejected':
         return 'bg-red-100 text-red-800';
       default:
@@ -144,12 +144,12 @@ export default function Withdraw({ user }) {
         {/* Hero Section */}
         <div className="text-center mb-4">
           <div className="relative inline-flex items-center justify-center mb-2">
-            <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
-            <div className="relative bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+            <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
               <DollarSign className="w-5 h-5 text-white" />
             </div>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent mb-2">
+          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
             Withdraw Money
           </h1>
           <p className="text-sm text-gray-600 max-w-2xl mx-auto leading-relaxed">
@@ -161,30 +161,30 @@ export default function Withdraw({ user }) {
           {/* Withdrawal Form */}
           <div className="lg:col-span-2 space-y-3">
             {/* Balance Summary Card */}
-            <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 rounded-xl shadow-lg p-4 text-white transform hover:scale-[1.02] transition-transform duration-300">
+            <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl shadow-lg p-4 text-white transform hover:scale-[1.02] transition-transform duration-300">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center">
                   <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2 mr-3">
                     <Wallet className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-green-100 text-xs font-medium">Available Balance</p>
+                    <p className="text-pink-100 text-xs font-medium">Available Balance</p>
                     <h2 className="text-2xl font-bold mt-0.5">₹{balance}</h2>
-                    <p className="text-green-100 text-xs mt-0.5">{points.toLocaleString()} points</p>
+                    <p className="text-pink-100 text-xs mt-0.5">{points.toLocaleString()} points</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <TrendingUp className="w-5 h-5 text-white/80 mb-1" />
-                  <p className="text-xs text-green-100">Ready to Cash Out</p>
+                  <p className="text-xs text-pink-100">Ready to Cash Out</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/20">
                 <div>
-                  <p className="text-green-100 text-xs mb-0.5">Total Earned</p>
+                  <p className="text-pink-100 text-xs mb-0.5">Total Earned</p>
                   <p className="text-lg font-bold">₹{((userData.totalEarned || 0) / 10).toFixed(2)}</p>
                 </div>
                 <div>
-                  <p className="text-green-100 text-xs mb-0.5">Total Withdrawn</p>
+                  <p className="text-pink-100 text-xs mb-0.5">Total Withdrawn</p>
                   <p className="text-lg font-bold">₹{((userData.totalWithdrawn || 0) / 10).toFixed(2)}</p>
                 </div>
               </div>
@@ -193,7 +193,7 @@ export default function Withdraw({ user }) {
             {/* Withdrawal Form Card */}
             <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 md:p-5 hover:shadow-xl transition-shadow duration-300">
               <div className="flex items-center mb-3">
-                <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
                   <CreditCard className="w-4 h-4 text-white" />
                 </div>
                 <h2 className="text-lg font-bold text-gray-800">Request Withdrawal</h2>
@@ -230,15 +230,15 @@ export default function Withdraw({ user }) {
               )}
 
               {success && (
-                <div className="mb-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg flex items-start shadow-sm animate-fade-in">
+                <div className="mb-3 p-3 bg-gradient-to-r from-pink-50 to-purple-50 border-l-4 border-pink-500 rounded-lg flex items-start shadow-sm animate-fade-in">
                   <div className="flex-shrink-0">
-                    <div className="bg-green-100 rounded-full p-1.5">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
+                    <div className="bg-pink-100 rounded-full p-1.5">
+                      <CheckCircle className="w-4 h-4 text-pink-600" />
                     </div>
                   </div>
                   <div className="flex-1 ml-3">
-                    <p className="font-bold text-sm text-green-900 mb-0.5">Success!</p>
-                    <p className="text-xs text-green-700 leading-relaxed">{success}</p>
+                    <p className="font-bold text-sm text-pink-900 mb-0.5">Success!</p>
+                    <p className="text-xs text-pink-700 leading-relaxed">{success}</p>
                   </div>
                 </div>
               )}
@@ -246,7 +246,7 @@ export default function Withdraw({ user }) {
               <form onSubmit={handleSubmit} className="space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-2 flex items-center">
-                    <DollarSign className="w-3 h-3 mr-1.5 text-green-600" />
+                    <DollarSign className="w-3 h-3 mr-1.5 text-pink-600" />
                     Amount (₹) <span className="text-red-500 ml-1">*</span>
                   </label>
                   <div className="relative">
@@ -256,7 +256,7 @@ export default function Withdraw({ user }) {
                       onChange={(e) => setAmount(e.target.value)}
                       min="100"
                       step="100"
-                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-gray-50 hover:bg-white focus:bg-white text-gray-800 placeholder-gray-400 text-sm font-semibold"
+                      className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200 bg-gray-50 hover:bg-white focus:bg-white text-gray-800 placeholder-gray-400 text-sm font-semibold"
                       placeholder="Enter amount (minimum ₹100)"
                       required
                       disabled={!canWithdraw || submitting}
@@ -267,24 +267,24 @@ export default function Withdraw({ user }) {
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <p className="text-xs text-gray-500 font-medium">
-                      Points required: <span className="font-bold text-green-600">{amount ? (parseInt(amount) * 10).toLocaleString() : '0'}</span> (₹1 = 10 points)
+                      Points required: <span className="font-bold text-pink-600">{amount ? (parseInt(amount) * 10).toLocaleString() : '0'}</span> (₹1 = 10 points)
                     </p>
                     {amount && parseInt(amount) >= 100 && (
-                      <CheckCircle className="w-3 h-3 text-green-500" />
+                      <CheckCircle className="w-3 h-3 text-pink-500" />
                     )}
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-2 flex items-center">
-                    <CreditCard className="w-3 h-3 mr-1.5 text-green-600" />
+                    <CreditCard className="w-3 h-3 mr-1.5 text-pink-600" />
                     UPI ID or Paytm Number <span className="text-red-500 ml-1">*</span>
                   </label>
                   <input
                     type="text"
                     value={upi}
                     onChange={(e) => setUpi(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-gray-50 hover:bg-white focus:bg-white text-gray-800 placeholder-gray-400 text-sm"
+                    className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200 bg-gray-50 hover:bg-white focus:bg-white text-gray-800 placeholder-gray-400 text-sm"
                     placeholder="yourname@paytm or yourname@upi"
                     required
                     disabled={!canWithdraw || submitting}
@@ -297,7 +297,7 @@ export default function Withdraw({ user }) {
                 <button
                   type="submit"
                   disabled={!canWithdraw || submitting}
-                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-sm"
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-sm"
                 >
                   {submitting ? (
                     <>
@@ -348,14 +348,14 @@ export default function Withdraw({ user }) {
           <div className="lg:col-span-1 space-y-3">
             <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 hover:shadow-xl transition-shadow duration-300 sticky top-8">
               <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center">
-                <TrendingUp className="w-4 h-4 mr-2 text-green-600" />
+                <TrendingUp className="w-4 h-4 mr-2 text-pink-600" />
                 Quick Stats
               </h3>
               <div className="space-y-2">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
-                  <p className="text-xs text-green-700 font-medium mb-0.5">Available Balance</p>
-                  <p className="text-lg font-bold text-green-700">₹{balance}</p>
-                  <p className="text-xs text-green-600 mt-0.5">{points.toLocaleString()} points</p>
+                <div className="bg-gradient-to-br from-pink-50 to-purple-50 rounded-lg p-3 border border-pink-100">
+                  <p className="text-xs text-pink-700 font-medium mb-0.5">Available Balance</p>
+                  <p className="text-lg font-bold text-pink-700">₹{balance}</p>
+                  <p className="text-xs text-pink-600 mt-0.5">{points.toLocaleString()} points</p>
                 </div>
                 <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-3 border border-blue-100">
                   <p className="text-xs text-blue-700 font-medium mb-0.5">Total Earned</p>
@@ -395,12 +395,12 @@ export default function Withdraw({ user }) {
               {withdrawals.map((withdrawal) => (
                 <div
                   key={withdrawal.id}
-                  className="border-2 border-gray-200 rounded-lg p-3 hover:shadow-md hover:border-green-300 transition-all duration-200 bg-gradient-to-r from-white to-gray-50"
+                  className="border-2 border-gray-200 rounded-lg p-3 hover:shadow-md hover:border-pink-300 transition-all duration-200 bg-gradient-to-r from-white to-gray-50"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3 flex-1">
                       <div className={`p-2 rounded-lg ${
-                        withdrawal.status === 'approved' ? 'bg-green-100' :
+                        withdrawal.status === 'approved' ? 'bg-pink-100' :
                         withdrawal.status === 'rejected' ? 'bg-red-100' :
                         'bg-yellow-100'
                       }`}>

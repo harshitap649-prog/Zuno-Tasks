@@ -176,6 +176,27 @@ export const resetWatchCount = async () => {
   }
 };
 
+export const resetUserWatchCount = async (uid) => {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      return { success: false, error: 'User not found' };
+    }
+
+    await updateDoc(userRef, {
+      watchCount: 0,
+      lastWatchReset: new Date().toISOString(),
+      lastWatchResetKey: getLocalDateKey(),
+    });
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 // Offers/Tasks Operations
 export const getActiveOffers = async () => {
   try {

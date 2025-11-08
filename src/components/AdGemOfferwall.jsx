@@ -18,6 +18,8 @@ export default function AdGemOfferwall({ apiKey, userId, offerwallUrl, onClose, 
       return offerwallUrl
         .replace(/{{\s*USER_ID\s*}}/g, userId)
         .replace(/{USER_ID}/g, userId)
+        .replace(/{player_id}/g, userId)
+        .replace(/{{\s*player_id\s*}}/g, userId)
         .replace(/{sub}/g, userId)
         .replace(/{subid}/g, userId)
         .replace(/{externalIdentifier}/g, userId);

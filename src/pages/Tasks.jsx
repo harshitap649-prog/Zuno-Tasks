@@ -1,15 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getActiveOffers, getUserOngoingTasks, startTask, getAdminSettings, subscribeToAdminSettings, subscribeToOffers, trackOfferClick, claimOfferPoints, checkOfferClaimed } from '../firebase/firestore';
-import { Coins, Gift, Clock, ArrowLeft, ExternalLink, HelpCircle, PlayCircle, FileText, Smartphone } from 'lucide-react';
+import { Coins, Gift, Clock, ArrowLeft, ExternalLink, HelpCircle, PlayCircle, FileText, Smartphone, Music, ShoppingBag } from 'lucide-react';
 import OfferToroOfferwall from '../components/OfferToroOfferwall';
 import InstantNetworkOfferwall from '../components/InstantNetworkOfferwall';
 import CPALeadOfferwall from '../components/CPALeadOfferwall';
 import CPALeadLinkLocker from '../components/CPALeadLinkLocker';
 import CPALeadFileLocker from '../components/CPALeadFileLocker';
 import CPALeadQuiz from '../components/CPALeadQuiz';
-import AyetStudiosOfferwall from '../components/AyetStudiosOfferwall';
-import CPXResearchQuiz from '../components/CPXResearchQuiz';
 import LootablyOfferwall from '../components/LootablyOfferwall';
 import AdGemOfferwall from '../components/AdGemOfferwall';
 import HideoutTvOfferwall from '../components/HideoutTvOfferwall';
@@ -30,8 +28,6 @@ export default function Tasks({ user }) {
   const [showCPALeadLinkLocker, setShowCPALeadLinkLocker] = useState(false);
   const [showCPALeadFileLocker, setShowCPALeadFileLocker] = useState(false);
   const [showCPALeadQuiz, setShowCPALeadQuiz] = useState(false);
-  const [showAyetStudios, setShowAyetStudios] = useState(false);
-  const [showCPXResearch, setShowCPXResearch] = useState(false);
   const [showLootably, setShowLootably] = useState(false);
   const [showAdGem, setShowAdGem] = useState(false);
   const [showHideoutTv, setShowHideoutTv] = useState(false);
@@ -44,10 +40,6 @@ export default function Tasks({ user }) {
   const [cpaleadLinkLockerUrl, setCPALeadLinkLockerUrl] = useState('');
   const [cpaleadFileLockerUrl, setCPALeadFileLockerUrl] = useState('');
   const [cpaleadQuizUrl, setCPALeadQuizUrl] = useState('');
-  const [ayetStudiosApiKey, setAyetStudiosApiKey] = useState('');
-  const [ayetStudiosOfferwallUrl, setAyetStudiosOfferwallUrl] = useState('');
-  const [cpxResearchApiKey, setCpxResearchApiKey] = useState('');
-  const [cpxResearchOfferwallUrl, setCpxResearchOfferwallUrl] = useState('');
   const [lootablyApiKey, setLootablyApiKey] = useState('');
   const [lootablyOfferwallUrl, setLootablyOfferwallUrl] = useState('');
   const [adgemApiKey, setAdgemApiKey] = useState('');
@@ -60,6 +52,7 @@ export default function Tasks({ user }) {
   const [surveySources, setSurveySources] = useState([]);
   const [videoSources, setVideoSources] = useState([]);
   const [appSources, setAppSources] = useState([]);
+  const [musicSources, setMusicSources] = useState([]);
   const [cpaleadIndividualOffers, setCPALeadIndividualOffers] = useState([]);
   
   const navigate = useNavigate();
@@ -202,6 +195,7 @@ export default function Tasks({ user }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
+        setMusicSources(settings.music || []);
               const loadedOffers = settings.cpaleadIndividualOffers || [];
               console.log('📋 Loading CPAlead Individual Offers from Firebase:', loadedOffers.length, 'offers');
               console.log('📋 Offers details:', JSON.stringify(loadedOffers, null, 2));
@@ -301,10 +295,6 @@ export default function Tasks({ user }) {
         setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
         setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
         setCPALeadQuizUrl(settings.cpaleadQuizUrl || '');
-        setAyetStudiosApiKey(settings.ayetStudiosApiKey || '');
-        setAyetStudiosOfferwallUrl(settings.ayetStudiosOfferwallUrl || '');
-        setCpxResearchApiKey(settings.cpxResearchApiKey || '');
-        setCpxResearchOfferwallUrl(settings.cpxResearchOfferwallUrl || '');
         setLootablyApiKey(settings.lootablyApiKey || '');
         setLootablyOfferwallUrl(settings.lootablyOfferwallUrl || '');
         setAdgemApiKey(settings.adgemApiKey || '');
@@ -315,6 +305,7 @@ export default function Tasks({ user }) {
         setSurveySources(settings.surveys || []);
         setVideoSources(settings.videos || []);
         setAppSources(settings.apps || []);
+        setMusicSources(settings.music || []);
               const realtimeOffers = settings.cpaleadIndividualOffers || [];
               
               // Show notification if new individual offers are added
@@ -410,21 +401,30 @@ export default function Tasks({ user }) {
       case 'surveys':
         // Check for survey offerwalls or individual offers with surveys category
         const surveyOffers = safeIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all');
-        return instantNetwork || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(surveySources) && surveySources.length > 0) || surveyOffers.length > 0;
+        return (instantNetwork && instantNetwork !== 'offerwallpro') || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(surveySources) && surveySources.length > 0) || surveyOffers.length > 0;
       case 'videos':
         // Check for video offerwalls or individual offers with videos category
         const videoOffers = safeIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all');
-        return instantNetwork || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(videoSources) && videoSources.length > 0) || videoOffers.length > 0;
+        return (instantNetwork && instantNetwork !== 'offerwallpro') || offertoroApiKey || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(videoSources) && videoSources.length > 0) || videoOffers.length > 0;
       case 'apps':
         // Check for app offerwalls or individual offers with apps category
         const appOffers = safeIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all');
-        return cpaleadPublisherId || instantNetwork || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(appSources) && appSources.length > 0) || appOffers.length > 0;
+        return (instantNetwork && instantNetwork !== 'offerwallpro') || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (Array.isArray(appSources) && appSources.length > 0) || appOffers.length > 0;
+      case 'music':
+        // Check for music offerwalls or individual offers with music category
+        const musicOffers = safeIndividualOffers.filter(o => o.category === 'music' || o.category === 'all');
+        return (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (instantNetwork && instantNetwork !== 'offerwallpro') || (Array.isArray(musicSources) && musicSources.length > 0) || musicOffers.length > 0;
       case 'games':
         // Check for individual offers with games category OR no category (default to games)
         const gameOffers = safeIndividualOffers.filter(o => !o.category || o.category === 'games' || o.category === 'all');
         const hasGames = gameOffers.length > 0;
         console.log('🎮 hasCategoryItems(games):', hasGames, 'game offers:', gameOffers.length, 'total offers:', safeIndividualOffers.length);
         return hasGames;
+      case 'shopping':
+        // Check for individual offers with shopping category from both sources
+        const shoppingOffers = safeIndividualOffers.filter(o => o.category === 'shopping' || o.category === 'all');
+        const shoppingTasks = safeAvailableTasks.filter(o => o.category === 'shopping');
+        return shoppingOffers.length > 0 || shoppingTasks.length > 0;
       case 'all':
         return true; // Always show "All Tasks" tab
       default:
@@ -607,6 +607,24 @@ export default function Tasks({ user }) {
               count={null}
               hasItems={hasCategoryItems('apps')}
             />
+            <CategoryTab
+              icon={Music}
+              label="Listen to Music"
+              category="music"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('music')}
+              count={null}
+              hasItems={hasCategoryItems('music')}
+            />
+            <CategoryTab
+              icon={ShoppingBag}
+              label="Shop an Item"
+              category="shopping"
+              activeCategory={activeCategory}
+              onClick={() => setActiveCategory('shopping')}
+              count={null}
+              hasItems={hasCategoryItems('shopping')}
+            />
           </div>
         </div>
 
@@ -666,8 +684,6 @@ export default function Tasks({ user }) {
             instantNetwork={instantNetwork}
             instantNetworkApiKey={instantNetworkApiKey}
             offertoroApiKey={offertoroApiKey}
-            cpxResearchApiKey={cpxResearchApiKey}
-            cpxResearchOfferwallUrl={cpxResearchOfferwallUrl}
             lootablyApiKey={lootablyApiKey}
             lootablyOfferwallUrl={lootablyOfferwallUrl}
             adgemApiKey={adgemApiKey}
@@ -683,8 +699,6 @@ export default function Tasks({ user }) {
             setShowInstantNetwork={setShowInstantNetwork}
             showOfferToro={showOfferToro}
             setShowOfferToro={setShowOfferToro}
-            showCPXResearch={showCPXResearch}
-            setShowCPXResearch={setShowCPXResearch}
             showLootably={showLootably}
             setShowLootably={setShowLootably}
             showAdGem={showAdGem}
@@ -705,8 +719,6 @@ export default function Tasks({ user }) {
             instantNetwork={instantNetwork}
             instantNetworkApiKey={instantNetworkApiKey}
             offertoroApiKey={offertoroApiKey}
-            ayetStudiosApiKey={ayetStudiosApiKey}
-            ayetStudiosOfferwallUrl={ayetStudiosOfferwallUrl}
             hideoutTvApiKey={hideoutTvApiKey}
             hideoutTvOfferwallUrl={hideoutTvOfferwallUrl}
             lootablyApiKey={lootablyApiKey}
@@ -723,8 +735,37 @@ export default function Tasks({ user }) {
             setShowInstantNetwork={setShowInstantNetwork}
             showOfferToro={showOfferToro}
             setShowOfferToro={setShowOfferToro}
-            showAyetStudios={showAyetStudios}
-            setShowAyetStudios={setShowAyetStudios}
+            showHideoutTv={showHideoutTv}
+            setShowHideoutTv={setShowHideoutTv}
+            showLootably={showLootably}
+            setShowLootably={setShowLootably}
+            showAdGem={showAdGem}
+            setShowAdGem={setShowAdGem}
+            onComplete={handleTaskComplete}
+          />
+        </div>
+      )}
+
+      {(activeCategory === 'all' || activeCategory === 'music') && (
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <Music className="w-5 h-5 mr-2 text-purple-600" />
+            Listen to Music
+          </h2>
+          <MusicCategory
+            instantNetwork={instantNetwork}
+            instantNetworkApiKey={instantNetworkApiKey}
+            hideoutTvApiKey={hideoutTvApiKey}
+            hideoutTvOfferwallUrl={hideoutTvOfferwallUrl}
+            lootablyApiKey={lootablyApiKey}
+            lootablyOfferwallUrl={lootablyOfferwallUrl}
+            adgemApiKey={adgemApiKey}
+            adgemOfferwallUrl={adgemOfferwallUrl}
+            musicSources={musicSources}
+            cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'music' || o.category === 'all')}
+            userId={user.uid}
+            showInstantNetwork={showInstantNetwork}
+            setShowInstantNetwork={setShowInstantNetwork}
             showHideoutTv={showHideoutTv}
             setShowHideoutTv={setShowHideoutTv}
             showLootably={showLootably}
@@ -765,6 +806,21 @@ export default function Tasks({ user }) {
             setShowLootably={setShowLootably}
             showAdGem={showAdGem}
             setShowAdGem={setShowAdGem}
+            onComplete={handleTaskComplete}
+          />
+        </div>
+      )}
+
+      {(activeCategory === 'all' || activeCategory === 'shopping') && (
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            <ShoppingBag className="w-5 h-5 mr-2 text-orange-600" />
+            Shop an Item
+          </h2>
+          <ShopItemsCategory
+            cpaleadIndividualOffers={cpaleadIndividualOffers.filter(o => o.category === 'shopping' || o.category === 'all')}
+            availableTasks={availableTasks}
+            userId={user.uid}
             onComplete={handleTaskComplete}
           />
         </div>
@@ -1399,6 +1455,172 @@ function GameTasksCategory({ cpaleadIndividualOffers = [], userId, onComplete })
   );
 }
 
+// Shop Items Category Component
+function ShopItemsCategory({ cpaleadIndividualOffers = [], availableTasks = [], userId, onComplete }) {
+  // Combine cpaleadIndividualOffers and availableTasks (from 'offers' collection) with shopping category
+  const shoppingFromCPALead = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers.filter(o => o.category === 'shopping' || o.category === 'all') : [];
+  const shoppingFromOffers = Array.isArray(availableTasks) ? availableTasks.filter(o => o.category === 'shopping') : [];
+  
+  // Convert availableTasks format to match cpaleadIndividualOffers format
+  const convertedOffers = shoppingFromOffers.map(task => ({
+    id: task.id,
+    name: task.title,
+    url: task.link,
+    description: task.description,
+    category: task.category || 'shopping',
+    imageUrl: task.imageUrl || '',
+    isAffiliate: task.isAffiliate || false,
+  }));
+  
+  const safeIndividualOffers = [...shoppingFromCPALead, ...convertedOffers];
+  const [claimedOffers, setClaimedOffers] = useState(new Set());
+
+  // Check which offers are already claimed
+  useEffect(() => {
+    if (!userId || safeIndividualOffers.length === 0) return;
+    
+    const checkClaims = async () => {
+      const claimedSet = new Set();
+      for (const offer of safeIndividualOffers) {
+        const offerId = offer.id || offer.url;
+        const result = await checkOfferClaimed(userId, offerId);
+        if (result.claimed) {
+          claimedSet.add(offerId);
+        }
+      }
+      setClaimedOffers(claimedSet);
+    };
+    
+    checkClaims();
+  }, [userId, safeIndividualOffers]);
+
+  if (safeIndividualOffers.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <div className="relative inline-flex items-center justify-center mb-3">
+            <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-red-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-orange-100 p-4 rounded-lg">
+              <ShoppingBag className="w-10 h-10 text-orange-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm font-medium mb-1">No products available</p>
+          <p className="text-gray-400 text-xs">Check back later for new shopping opportunities!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 mb-4">
+      {/* Shop Items Header */}
+      <div className="mb-4 flex justify-center">
+        <div className="flex items-center justify-center gap-4 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg px-6 py-3 border border-orange-200 max-w-md">
+          <div className="bg-gradient-to-r from-orange-600 to-red-600 p-2 rounded-lg">
+            <ShoppingBag className="w-6 h-6 text-white" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-lg font-bold text-gray-800">
+              {safeIndividualOffers.length}+ Products
+            </h2>
+            <p className="text-xs text-gray-600">
+              Shop and earn points on every purchase!
+            </p>
+          </div>
+          <div className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">
+            {safeIndividualOffers.length}+
+          </div>
+        </div>
+      </div>
+
+      {/* Shop Items Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {safeIndividualOffers.map((offer, index) => {
+          return (
+            <div
+              key={offer.id || index}
+              className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl overflow-hidden shadow-2xl hover:shadow-orange-500/20 transition-all duration-300 transform hover:-translate-y-2 border border-gray-700 group"
+            >
+              {/* Affiliate Badge */}
+              {offer.isAffiliate && (
+                <div className="absolute top-3 right-3 z-10">
+                  <span className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg border border-orange-400">
+                    💰 Affiliate
+                  </span>
+                </div>
+              )}
+
+              {/* Product Image */}
+              <div className="relative h-48 bg-gradient-to-br from-orange-600 to-red-600 overflow-hidden">
+                {offer.imageUrl ? (
+                  <img
+                    src={offer.imageUrl}
+                    alt={offer.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.parentElement.classList.add('bg-gradient-to-br', 'from-orange-600', 'to-red-600');
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 via-red-600 to-pink-600">
+                    <ShoppingBag className="w-16 h-16 text-white/30" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent"></div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4">
+                <h3 className="text-white font-bold text-sm mb-2 line-clamp-2 min-h-[2.5rem] group-hover:text-orange-300 transition-colors">
+                  {offer.name}
+                </h3>
+                <p className="text-gray-400 text-xs mb-4 line-clamp-2">
+                  {offer.description || 'Shop this product and earn rewards!'}
+                </p>
+                
+                {/* Buy Now Button */}
+                {claimedOffers.has(offer.id || offer.url) ? (
+                  <button
+                    disabled
+                    className="w-full bg-gray-500 text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 cursor-not-allowed"
+                  >
+                    <span>✓ Purchased</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      if (!userId) {
+                        alert('Please log in to shop');
+                        return;
+                      }
+                      
+                      const offerId = offer.id || offer.url;
+                      
+                      // Track the click
+                      await trackOfferClick(userId, offerId, offer.name, offer.url);
+                      
+                      // Open affiliate link directly in new tab
+                      window.open(offer.url, '_blank', 'noopener,noreferrer');
+                      
+                      // Show message
+                      alert('✅ Opening product page! Complete your purchase to earn points.');
+                    }}
+                    className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                  >
+                    <span>Buy Now</span>
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Quizzes Category Component
 function QuizzesCategory({ cpaleadQuizUrl, quizSources, cpaleadIndividualOffers = [], userId, user, showCPALeadQuiz, setShowCPALeadQuiz, availableTasks = [], onComplete }) {
   // Manual tasks disabled - removed quizOffers
@@ -1602,8 +1824,6 @@ function SurveysCategory({
   instantNetwork,
   instantNetworkApiKey,
   offertoroApiKey,
-  cpxResearchApiKey,
-  cpxResearchOfferwallUrl,
   lootablyApiKey,
   lootablyOfferwallUrl,
   adgemApiKey,
@@ -1619,8 +1839,6 @@ function SurveysCategory({
   setShowInstantNetwork,
   showOfferToro,
   setShowOfferToro,
-  showCPXResearch,
-  setShowCPXResearch,
   showLootably,
   setShowLootably,
   showAdGem,
@@ -1658,7 +1876,7 @@ function SurveysCategory({
       // CPAlead offerwall disabled - removed cpaleadPublisherId
       // Filter individual offers for surveys category
       const surveyIndividualOffers = safeIndividualOffers.filter(o => o.category === 'surveys' || o.category === 'all');
-      const hasSurveys = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (cpxResearchApiKey || cpxResearchOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeSurveySources.length > 0 || surveyIndividualOffers.length > 0;
+      const hasSurveys = (instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallpro') || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeSurveySources.length > 0 || surveyIndividualOffers.length > 0;
 
   if (!hasSurveys) {
     return (
@@ -1707,50 +1925,8 @@ function SurveysCategory({
         </div>
       )}
 
-      {/* CPX Research (High-Paying Surveys) */}
-      {(cpxResearchApiKey || cpxResearchOfferwallUrl) && (
-        <div className="bg-white rounded-lg shadow-lg border-2 border-indigo-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-2 rounded-lg mr-3">
-                <HelpCircle className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">CPX Research Surveys</h2>
-                <p className="text-sm text-gray-600">High-paying surveys available!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowCPXResearch(!showCPXResearch)}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              {showCPXResearch ? 'Hide' : 'Start Surveys'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-          {showCPXResearch && (
-            <div className="mt-6 border-t border-indigo-200 pt-6">
-              <CPXResearchQuiz
-                apiKey={cpxResearchApiKey}
-                userId={userId}
-                user={user}
-                offerwallUrl={cpxResearchOfferwallUrl}
-                secureHashKey={null}
-                onComplete={(data) => {
-                  if (data.success) onComplete();
-                  else {
-                    alert(`Survey completed! Reward: ${data.reward || 0} points`);
-                    onComplete();
-                  }
-                }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Instant Network (contains surveys) */}
-      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
+      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && instantNetwork !== 'offerwallpro' && (
         <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center flex-1">
@@ -1864,26 +2040,29 @@ function SurveysCategory({
         </div>
       )}
 
-      {/* AdGem (Surveys, Apps, Videos) */}
+      {/* AdGem (Surveys) */}
       {(adgemApiKey || adgemOfferwallUrl) && (
-        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex-1">
-              <h2 className="text-base font-bold text-gray-800 flex items-center mb-1">
-                <HelpCircle className="w-4 h-4 mr-2 text-green-600" />
-                AdGem Surveys
-              </h2>
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <HelpCircle className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">AdGem Surveys</h2>
+                <p className="text-sm text-gray-600">Complete surveys and earn points!</p>
+              </div>
             </div>
             <button
               onClick={() => setShowAdGem(!showAdGem)}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-1.5 px-3 rounded-lg flex items-center ml-3 text-xs"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showAdGem ? 'Hide' : 'View Surveys'}
-              <ExternalLink className="w-3 h-3 ml-1.5" />
+              <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showAdGem && (
-            <div className="mt-3 border rounded-lg overflow-hidden">
+            <div className="mt-6 border-t border-purple-200 pt-6">
               <AdGemOfferwall
                 apiKey={adgemApiKey}
                 userId={userId}
@@ -1998,8 +2177,6 @@ function VideosCategory({
   instantNetwork,
   instantNetworkApiKey,
   offertoroApiKey,
-  ayetStudiosApiKey,
-  ayetStudiosOfferwallUrl,
   hideoutTvApiKey,
   hideoutTvOfferwallUrl,
   lootablyApiKey,
@@ -2016,8 +2193,6 @@ function VideosCategory({
   setShowInstantNetwork,
   showOfferToro,
   setShowOfferToro,
-  showAyetStudios,
-  setShowAyetStudios,
   showHideoutTv,
   setShowHideoutTv,
   showLootably,
@@ -2057,7 +2232,7 @@ function VideosCategory({
       // Filter individual offers for videos category
       const videoIndividualOffers = safeIndividualOffers.filter(o => o.category === 'videos' || o.category === 'all');
       // CPAlead offerwall disabled - removed cpaleadPublisherId
-      const hasVideos = (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (ayetStudiosApiKey || ayetStudiosOfferwallUrl) || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeVideoSources.length > 0 || videoIndividualOffers.length > 0;
+      const hasVideos = (instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallpro') || offertoroApiKey || (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeVideoSources.length > 0 || videoIndividualOffers.length > 0;
 
   if (!hasVideos) {
     return (
@@ -2100,31 +2275,8 @@ function VideosCategory({
         </div>
       )}
 
-      {/* Ayet Studios (Video-focused) - Coming Soon */}
-      {(ayetStudiosApiKey || ayetStudiosOfferwallUrl) && (
-        <div className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-red-600 to-orange-600 p-2 rounded-lg mr-3">
-                <PlayCircle className="w-4 h-4 text-white" />
-          </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">Ayet Studios Videos</h2>
-                <p className="text-sm text-gray-600">Coming Soon</p>
-            </div>
-        </div>
-            <button
-              disabled
-              className="bg-gray-400 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg cursor-not-allowed flex-shrink-0 ml-4"
-            >
-              Coming Soon
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Instant Network (contains videos) */}
-      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
+      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && instantNetwork !== 'offerwallpro' && (
         <div className="bg-white rounded-lg shadow-lg border-2 border-red-200 p-4 hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center flex-1">
@@ -2256,10 +2408,10 @@ function VideosCategory({
 
       {/* AdGem (contains videos) */}
       {(adgemApiKey || adgemOfferwallUrl) && (
-        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
                 <PlayCircle className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -2269,14 +2421,14 @@ function VideosCategory({
             </div>
             <button
               onClick={() => setShowAdGem(!showAdGem)}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showAdGem ? 'Hide' : 'Watch Videos'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showAdGem && (
-            <div className="mt-6 border-t border-green-200 pt-6">
+            <div className="mt-6 border-t border-purple-200 pt-6">
               <AdGemOfferwall
                 apiKey={adgemApiKey}
                 userId={userId}
@@ -2480,7 +2632,7 @@ function AppsCategory({
       
       // Filter individual offers for apps category
       const appIndividualOffers = safeIndividualOffers.filter(o => o.category === 'apps' || o.category === 'all');
-      const hasApps = cpaleadPublisherId || (instantNetwork && instantNetworkApiKey) || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeAppSources.length > 0 || appIndividualOffers.length > 0;
+      const hasApps = (instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallpro') || offertoroApiKey || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || safeAppSources.length > 0 || appIndividualOffers.length > 0;
 
   if (!hasApps) {
     return (
@@ -2501,52 +2653,8 @@ function AppsCategory({
 
   return (
     <div className="space-y-3 mb-4">
-      {/* CPAlead Offerwall (contains apps) */}
-      {cpaleadPublisherId && (
-        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
-                <Smartphone className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 mb-0.5">CPAlead App Tasks</h2>
-                <p className="text-sm text-gray-600">Install apps and earn points!</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowCPALead(!showCPALead)}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
-            >
-              {showCPALead ? 'Hide' : 'View Apps'}
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-          {showCPALead && (
-            <div className="mt-6 border-t border-purple-200 pt-6">
-              {cpaleadPublisherId && userId ? (
-                <div className="w-full">
-                  <CPALeadOfferwall
-                    publisherId={cpaleadPublisherId}
-                    userId={userId}
-                    onComplete={onComplete || (() => {})}
-                  />
-                </div>
-              ) : (
-                <div className="p-4 text-center bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
-                    {!cpaleadPublisherId && '⚠️ CPAlead Publisher ID is not configured. Please add it in Admin Panel.'}
-                    {!userId && '⚠️ User ID is missing. Please refresh the page.'}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Instant Network (contains apps) */}
-      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && (
+      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && instantNetwork !== 'offerwallpro' && (
         <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center flex-1">
@@ -2665,10 +2773,10 @@ function AppsCategory({
 
       {/* AdGem (contains apps) */}
       {(adgemApiKey || adgemOfferwallUrl) && (
-        <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-4 hover:shadow-xl transition-shadow duration-300">
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div className="flex items-center flex-1">
-              <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-2 rounded-lg mr-3">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
                 <Smartphone className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -2678,14 +2786,14 @@ function AppsCategory({
             </div>
             <button
               onClick={() => setShowAdGem(!showAdGem)}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
             >
               {showAdGem ? 'Hide' : 'View Apps'}
               <ExternalLink className="w-4 h-4 ml-2" />
             </button>
           </div>
           {showAdGem && (
-            <div className="mt-6 border-t border-green-200 pt-6">
+            <div className="mt-6 border-t border-purple-200 pt-6">
               <AdGemOfferwall
                 apiKey={adgemApiKey}
                 userId={userId}
@@ -2780,6 +2888,295 @@ function AppsCategory({
           userId={userId}
           onComplete={onComplete}
           icon={Smartphone}
+          claimedOffers={claimedOffers}
+          setClaimedOffers={setClaimedOffers}
+          openedOffers={openedOffers}
+          setOpenedOffers={setOpenedOffers}
+          offerOpenTimes={offerOpenTimes}
+          setOfferOpenTimes={setOfferOpenTimes}
+          claimingOffer={claimingOffer}
+          setClaimingOffer={setClaimingOffer}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Music Category Component
+function MusicCategory({
+  instantNetwork,
+  instantNetworkApiKey,
+  hideoutTvApiKey,
+  hideoutTvOfferwallUrl,
+  lootablyApiKey,
+  lootablyOfferwallUrl,
+  adgemApiKey,
+  adgemOfferwallUrl,
+  musicSources = [],
+  cpaleadIndividualOffers = [],
+  userId,
+  showInstantNetwork,
+  setShowInstantNetwork,
+  showHideoutTv,
+  setShowHideoutTv,
+  showLootably,
+  setShowLootably,
+  showAdGem,
+  setShowAdGem,
+  onComplete
+}) {
+  // Safety checks
+  const safeMusicSources = Array.isArray(musicSources) ? musicSources : [];
+  const safeIndividualOffers = Array.isArray(cpaleadIndividualOffers) ? cpaleadIndividualOffers : [];
+  const [claimedOffers, setClaimedOffers] = useState(new Set());
+  const [claimingOffer, setClaimingOffer] = useState(null);
+  const [openedOffers, setOpenedOffers] = useState(new Set());
+  const [offerOpenTimes, setOfferOpenTimes] = useState(new Map());
+  
+  // Check which offers are already claimed
+  useEffect(() => {
+    if (!userId || safeIndividualOffers.length === 0) return;
+    
+    const checkClaims = async () => {
+      const claimedSet = new Set();
+      for (const offer of safeIndividualOffers) {
+        const offerId = offer.id || offer.url;
+        const result = await checkOfferClaimed(userId, offerId);
+        if (result.claimed) {
+          claimedSet.add(offerId);
+        }
+      }
+      setClaimedOffers(claimedSet);
+    };
+    
+    checkClaims();
+  }, [userId, safeIndividualOffers]);
+  
+  // Filter individual offers for music category
+  const musicIndividualOffers = safeIndividualOffers.filter(o => o.category === 'music' || o.category === 'all');
+  const hasMusic = (hideoutTvApiKey || hideoutTvOfferwallUrl) || (lootablyApiKey || lootablyOfferwallUrl) || (adgemApiKey || adgemOfferwallUrl) || (instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallpro') || safeMusicSources.length > 0 || musicIndividualOffers.length > 0;
+
+  if (!hasMusic) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-4 md:p-5 mb-4">
+        <div className="text-center py-8">
+          <div className="relative inline-flex items-center justify-center mb-3">
+            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full blur-xl opacity-50"></div>
+            <div className="relative bg-gray-100 p-4 rounded-lg">
+              <Music className="w-10 h-10 text-gray-400" />
+            </div>
+          </div>
+          <p className="text-gray-500 text-sm font-medium mb-1">No music listening tasks available</p>
+          <p className="text-gray-400 text-xs">Check back later for new music opportunities!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 mb-4">
+      {/* Hideout.tv (Best for Music) */}
+      {(hideoutTvApiKey || hideoutTvOfferwallUrl) && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-pink-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-pink-600 to-rose-600 p-2 rounded-lg mr-3">
+                <Music className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">Hideout.tv Music</h2>
+                <p className="text-sm text-gray-600">Listen to music and earn points!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowHideoutTv(!showHideoutTv)}
+              className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              {showHideoutTv ? 'Hide' : 'Listen to Music'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+          {showHideoutTv && (
+            <div className="mt-6 border-t border-pink-200 pt-6">
+              <HideoutTvOfferwall
+                apiKey={hideoutTvApiKey}
+                userId={userId}
+                offerwallUrl={hideoutTvOfferwallUrl}
+                onComplete={(data) => {
+                  if (data.success) onComplete();
+                  else {
+                    alert(`🎵 Music completed! Reward: ${data.reward || 0} points`);
+                    onComplete();
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lootably (contains music) */}
+      {(lootablyApiKey || lootablyOfferwallUrl) && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-blue-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-2 rounded-lg mr-3">
+                <Music className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">Lootably Music</h2>
+                <p className="text-sm text-gray-600">Listen to music and earn points!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowLootably(!showLootably)}
+              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              {showLootably ? 'Hide' : 'Listen to Music'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+          {showLootably && (
+            <div className="mt-6 border-t border-blue-200 pt-6">
+              <LootablyOfferwall
+                apiKey={lootablyApiKey}
+                userId={userId}
+                offerwallUrl={lootablyOfferwallUrl}
+                onComplete={(data) => {
+                  if (data.success) onComplete();
+                  else {
+                    alert(`🎵 Music completed! Reward: ${data.reward || 0} points`);
+                    onComplete();
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AdGem (contains music) */}
+      {(adgemApiKey || adgemOfferwallUrl) && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg mr-3">
+                <Music className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">AdGem Music</h2>
+                <p className="text-sm text-gray-600">Listen to music and earn points!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowAdGem(!showAdGem)}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              {showAdGem ? 'Hide' : 'Listen to Music'}
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+          {showAdGem && (
+            <div className="mt-6 border-t border-purple-200 pt-6">
+              <AdGemOfferwall
+                apiKey={adgemApiKey}
+                userId={userId}
+                offerwallUrl={adgemOfferwallUrl}
+                onComplete={(data) => {
+                  if (data.success) onComplete();
+                  else {
+                    alert(`🎵 Music completed! Reward: ${data.reward || 0} points`);
+                    onComplete();
+                  }
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Instant Network (contains music) */}
+      {instantNetwork && instantNetworkApiKey && instantNetwork !== 'offerwallme' && instantNetwork !== 'offerwallpro' && (
+        <div className="bg-white rounded-lg shadow-lg border-2 border-indigo-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-2 rounded-lg mr-3">
+                <Music className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">
+                  {instantNetwork === 'offerwallpro' && 'Offerwall PRO'}
+                  {instantNetwork === 'bitlabs' && 'Bitlabs'}
+                  {instantNetwork === 'adgatemedia' && 'AdGate Media'}
+                  {' '}Music Tasks
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {instantNetwork === 'offerwallpro' ? 'Coming Soon' : 'Listen to music and earn points!'}
+                </p>
+              </div>
+            </div>
+            {instantNetwork === 'offerwallpro' ? (
+              <button
+                disabled
+                className="bg-gray-400 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg cursor-not-allowed flex-shrink-0 ml-4"
+              >
+                Coming Soon
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowInstantNetwork(!showInstantNetwork)}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+              >
+                {showInstantNetwork ? 'Hide' : 'Listen to Music'}
+                <ExternalLink className="w-4 h-4 ml-2" />
+              </button>
+            )}
+          </div>
+          {showInstantNetwork && instantNetwork !== 'offerwallpro' && (
+            <div className="mt-6 border-t border-indigo-200 pt-6">
+              <InstantNetworkOfferwall
+                network={instantNetwork}
+                apiKey={instantNetworkApiKey}
+                userId={userId}
+                onComplete={onComplete}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Additional Music Sources */}
+      {safeMusicSources.map((source, index) => (
+        <div key={index} className="bg-white rounded-lg shadow-lg border-2 border-indigo-200 p-4 hover:shadow-xl transition-shadow duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center flex-1">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-2 rounded-lg mr-3">
+                <Music className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-800 mb-0.5">{source.name || `${source.source} Music`}</h2>
+                <p className="text-sm text-gray-600">Listen to music and earn points!</p>
+              </div>
+            </div>
+            <button
+              onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2.5 px-6 rounded-xl flex items-center shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex-shrink-0 ml-4"
+            >
+              Listen to Music
+              <ExternalLink className="w-4 h-4 ml-2" />
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {/* CPAlead Individual Offers (Music) */}
+      {safeIndividualOffers.map((offer, index) => (
+        <IndividualOfferCard
+          key={offer.id || index}
+          offer={offer}
+          userId={userId}
+          onComplete={onComplete}
+          icon={Music}
           claimedOffers={claimedOffers}
           setClaimedOffers={setClaimedOffers}
           openedOffers={openedOffers}

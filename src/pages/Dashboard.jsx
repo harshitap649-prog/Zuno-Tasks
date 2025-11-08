@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getUserData, getActiveOffers, updateWatchCount, subscribeToOffers, getUserReferralCode, getAdminSettings } from '../firebase/firestore';
-import { Coins, PlayCircle, Gift, TrendingUp, Copy, Check, ShieldCheck, FileLock, Link, Smartphone, Wallet, Sparkles, ArrowRight, Users, Zap } from 'lucide-react';
+import { getUserData, getActiveOffers, updateWatchCount, subscribeToOffers, getUserReferralCode } from '../firebase/firestore';
+import { Coins, PlayCircle, Gift, TrendingUp, Copy, Check, ShieldCheck, Smartphone, Wallet, Sparkles, ArrowRight, Users, Zap } from 'lucide-react';
 import WatchAdModal from '../components/WatchAdModal';
-import CPALeadFileLocker from '../components/CPALeadFileLocker';
-import CPALeadLinkLocker from '../components/CPALeadLinkLocker';
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
@@ -15,10 +13,6 @@ export default function Dashboard({ user }) {
   const [referralCode, setReferralCode] = useState('');
   const [referralLink, setReferralLink] = useState('');
   const [copied, setCopied] = useState(false);
-  const [cpaleadFileLockerUrl, setCPALeadFileLockerUrl] = useState('');
-  const [cpaleadLinkLockerUrl, setCPALeadLinkLockerUrl] = useState('');
-  const [showFileLocker, setShowFileLocker] = useState(false);
-  const [showLinkLocker, setShowLinkLocker] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -31,35 +25,9 @@ export default function Dashboard({ user }) {
     // Load referral code
     loadReferralCode();
 
-    // Load CPAlead locker settings
-    loadCPALeadSettings();
-
     return () => unsubscribe();
   }, [user]);
 
-  const loadCPALeadSettings = async () => {
-    try {
-      const settingsResult = await getAdminSettings();
-      if (settingsResult.success && settingsResult.settings) {
-        const settings = settingsResult.settings;
-        setCPALeadFileLockerUrl(settings.cpaleadFileLockerUrl || '');
-        setCPALeadLinkLockerUrl(settings.cpaleadLinkLockerUrl || '');
-      } else {
-        // Fallback to localStorage
-        const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
-        const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
-        setCPALeadFileLockerUrl(savedFileLocker);
-        setCPALeadLinkLockerUrl(savedLinkLocker);
-      }
-    } catch (error) {
-      console.error('Error loading CPAlead settings:', error);
-      const savedFileLocker = localStorage.getItem('cpalead_file_locker_url') || '';
-      const savedLinkLocker = localStorage.getItem('cpalead_link_locker_url') || '';
-      setCPALeadFileLockerUrl(savedFileLocker);
-      setCPALeadLinkLockerUrl(savedLinkLocker);
-    }
-  };
-  
   const loadReferralCode = async () => {
     if (user) {
       const result = await getUserReferralCode(user.uid);
@@ -165,11 +133,134 @@ export default function Dashboard({ user }) {
       return;
     }
 
-    // Adsterra popunder removed - now using CPALead offerwall in WatchAdModal
-    // No script loading needed
-    
-    // Now open the modal
+    // Check if ad is already loaded
+    const existingScript = document.querySelector('script[src*="pl28003582.effectivegatecpm.com"]');
+    const isAlreadyLoaded = !!existingScript;
+
+    // Open modal IMMEDIATELY to show loading state
     setShowAdModal(true);
+    
+    // If ad is already loaded, skip loading and go straight to timer
+    if (isAlreadyLoaded) {
+      console.log('✅ Ad already loaded - skipping loading screen');
+      window.__adLoadedStatus = true;
+      return;
+    }
+
+    // Ad not loaded - show loading screen and load it
+    console.log('🔄 Ad not loaded - starting loading process...');
+    window.__adLoadedStatus = false;
+
+    let adLoadedSuccessfully = false;
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const scriptUrl = `${protocol}//pl28003582.effectivegatecpm.com/59/59/a6/5959a647de320ea10184d9a4f67f817e.js`;
+    
+    // Method 1: Direct script tag (synchronous)
+    const script1 = document.createElement('script');
+    script1.type = 'text/javascript';
+    script1.src = scriptUrl;
+    script1.async = false;
+    script1.defer = false;
+    script1.onload = () => {
+      console.log('✅ Method 1: Script tag loaded');
+      adLoadedSuccessfully = true;
+      window.__adLoadedStatus = true;
+    };
+    script1.onerror = () => console.warn('⚠️ Method 1 failed');
+    document.head.appendChild(script1);
+    
+    // Method 2: Inline script with fetch (bypass some blockers)
+    setTimeout(async () => {
+      if (!adLoadedSuccessfully) {
+        try {
+          const response = await fetch(scriptUrl).catch(() => null);
+          if (response && response.ok) {
+            const content = await response.text();
+            const script2 = document.createElement('script');
+            script2.type = 'text/javascript';
+            script2.textContent = content;
+            script2.onload = () => {
+              console.log('✅ Method 2: Fetch + inline executed');
+              adLoadedSuccessfully = true;
+              window.__adLoadedStatus = true;
+            };
+            document.head.appendChild(script2);
+          }
+        } catch (e) {
+          console.warn('⚠️ Method 2 failed:', e);
+        }
+      }
+    }, 100);
+    
+    // Method 3: Dynamic import (alternative approach)
+    setTimeout(() => {
+      if (!adLoadedSuccessfully) {
+        try {
+          const script3 = document.createElement('script');
+          script3.src = scriptUrl;
+          script3.setAttribute('data-method', 'dynamic');
+          document.body.appendChild(script3);
+          script3.onload = () => {
+            console.log('✅ Method 3: Dynamic append worked');
+            adLoadedSuccessfully = true;
+            window.__adLoadedStatus = true;
+          };
+        } catch (e) {
+          console.warn('⚠️ Method 3 failed:', e);
+        }
+      }
+    }, 200);
+    
+    // Method 4: Iframe approach (harder to block)
+    setTimeout(() => {
+      if (!adLoadedSuccessfully) {
+        try {
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          iframe.style.width = '0';
+          iframe.style.height = '0';
+          iframe.src = 'about:blank';
+          document.body.appendChild(iframe);
+          
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+          const iframeScript = iframeDoc.createElement('script');
+          iframeScript.src = scriptUrl;
+          iframeDoc.head.appendChild(iframeScript);
+          iframeScript.onload = () => {
+            console.log('✅ Method 4: Iframe method worked');
+            adLoadedSuccessfully = true;
+            window.__adLoadedStatus = true;
+          };
+        } catch (e) {
+          console.warn('⚠️ Method 4 failed (likely CORS):', e);
+        }
+      }
+    }, 300);
+    
+    // Method 5: Obfuscated loading (using eval wrapper)
+    setTimeout(() => {
+      if (!adLoadedSuccessfully) {
+        try {
+          const script5 = document.createElement('script');
+          script5.innerHTML = `(function(){var s=document.createElement('script');s.src='${scriptUrl}';document.head.appendChild(s);})();`;
+          document.head.appendChild(script5);
+          console.log('✅ Method 5: Obfuscated method attempted');
+          adLoadedSuccessfully = true;
+          window.__adLoadedStatus = true;
+        } catch (e) {
+          console.warn('⚠️ Method 5 failed:', e);
+        }
+      }
+    }, 400);
+
+    // Final check after all methods
+    setTimeout(() => {
+      const finalScript = document.querySelector('script[src*="pl28003582.effectivegatecpm.com"]');
+      if (finalScript) {
+        console.log('✅ Script found in DOM - marking as loaded');
+        window.__adLoadedStatus = true;
+      }
+    }, 800);
   };
 
   const onAdComplete = async () => {
@@ -211,12 +302,12 @@ export default function Dashboard({ user }) {
         {/* Hero Section */}
         <div className="text-center mb-4">
           <div className="relative inline-flex items-center justify-center mb-2">
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
-            <div className="relative bg-gradient-to-r from-indigo-600 to-purple-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+            <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
             Welcome Back, {userData?.name || 'User'}!
           </h1>
           <p className="text-sm text-gray-600 max-w-2xl mx-auto leading-relaxed">
@@ -434,74 +525,6 @@ export default function Dashboard({ user }) {
             </div>
           )}
         </div>
-
-        {/* CPAlead File Locker Section */}
-        {cpaleadFileLockerUrl && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-3 mb-3 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center flex-1">
-                <FileLock className="w-4 h-4 text-green-600 mr-3 flex-shrink-0" />
-                <div>
-                  <h3 className="text-base font-bold text-gray-800 mb-0.5">File Locker</h3>
-                  <p className="text-xs text-gray-600">
-                    Complete offers to unlock premium file downloads. Earn points for each completed offer!
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowFileLocker(!showFileLocker)}
-                className="bg-green-600 hover:bg-green-700 text-white font-semibold py-1.5 px-3 rounded-lg flex items-center shadow-sm hover:shadow-md transition-all duration-200 flex-shrink-0 ml-3 text-xs"
-              >
-                {showFileLocker ? 'Hide' : 'Open File Locker'}
-                <FileLock className="w-3 h-3 ml-1.5" />
-              </button>
-            </div>
-
-            {showFileLocker && (
-              <div className="mt-3 border-t border-green-200 pt-3">
-                <CPALeadFileLocker
-                  lockerUrl={cpaleadFileLockerUrl}
-                  userId={user.uid}
-                  onComplete={handleTaskComplete}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* CPAlead Link Locker Section */}
-        {cpaleadLinkLockerUrl && (
-          <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-lg p-3 mb-3 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center flex-1">
-                <Link className="w-4 h-4 text-blue-600 mr-3 flex-shrink-0" />
-                <div>
-                  <h3 className="text-base font-bold text-gray-800 mb-0.5">Link Locker</h3>
-                  <p className="text-xs text-gray-600">
-                    Complete offers to unlock premium links. Earn points for each completed offer!
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowLinkLocker(!showLinkLocker)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded-lg flex items-center shadow-sm hover:shadow-md transition-all duration-200 flex-shrink-0 ml-3 text-xs"
-              >
-                {showLinkLocker ? 'Hide' : 'Open Link Locker'}
-                <Link className="w-3 h-3 ml-1.5" />
-              </button>
-            </div>
-
-            {showLinkLocker && (
-              <div className="mt-3 border-t border-blue-200 pt-3">
-                <CPALeadLinkLocker
-                  lockerUrl={cpaleadLinkLockerUrl}
-                  userId={user.uid}
-                  onComplete={handleTaskComplete}
-                />
-              </div>
-            )}
-          </div>
-        )}
 
         {/* SMS Verification Section - Coming Soon */}
         <div className="bg-gradient-to-r from-gray-50 to-gray-100 border-2 border-gray-200 rounded-lg p-3 mb-3 shadow-sm">

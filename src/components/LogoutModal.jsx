@@ -15,9 +15,9 @@ export default function LogoutModal({ isOpen, onClose, onConfirm, userEmail }) {
         </button>
 
         <div className="text-center">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-pink-100 mb-4">
             <svg
-              className="h-8 w-8 text-red-600"
+              className="h-8 w-8 text-pink-600"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -51,7 +51,7 @@ export default function LogoutModal({ isOpen, onClose, onConfirm, userEmail }) {
             </button>
             <button
               onClick={onConfirm}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+              className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-md hover:shadow-lg"
             >
               Yes, Logout
             </button>

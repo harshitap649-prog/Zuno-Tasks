@@ -231,8 +231,9 @@ export default function HelpSupport({ user }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6">
+    <div className={`min-h-screen bg-gray-50 ${activeView === 'chat' ? 'md:bg-gray-50' : ''}`}>
+      {/* Desktop/Tablet Layout */}
+      <div className={`${activeView === 'chat' ? 'hidden md:block md:max-w-7xl md:mx-auto md:px-4 md:sm:px-6 md:lg:px-8 md:py-4 md:lg:py-6' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-6'}`}>
         {/* Top Heading Banner */}
         <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg shadow-lg mb-4 px-6 py-4">
           <h1 className="text-xl md:text-2xl font-bold text-white text-center">
@@ -351,27 +352,128 @@ export default function HelpSupport({ user }) {
           </div>
         )}
 
-        {/* Chat Container */}
-        {activeView === 'chat' && (
-        <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 280px)', minHeight: '600px' }}>
-          {/* Chat Header */}
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 flex items-center justify-between border-b border-purple-500">
-            <div className="flex items-center gap-3">
-              <div className="bg-white/20 rounded-full p-2">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
-          <div>
-                <h2 className="text-lg font-bold text-white">Support Chat</h2>
-                <p className="text-xs text-purple-100">Get help from our support team</p>
-              </div>
-          </div>
-            <div className="bg-white/20 rounded-lg px-3 py-1">
-              <span className="text-xs font-semibold text-white">{userMessages.filter(m => m.type === 'user').length} conversations</span>
-                  </div>
+        {/* Mobile Full-Screen Container */}
+        <div className="md:hidden fixed inset-0 bg-white z-50 flex flex-col">
+          {/* Mobile Tabs - Fixed at top */}
+          <div className="bg-white border-b border-gray-200 p-2 pt-safe flex-shrink-0">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveView('faq')}
+                className={`flex-1 py-2.5 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                  activeView === 'faq'
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <HelpCircle className="w-4 h-4" />
+                FAQ
+              </button>
+              <button
+                onClick={() => setActiveView('chat')}
+                className={`flex-1 py-2.5 px-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                  activeView === 'chat'
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                Chat
+                {userMessages.filter(m => m.type === 'user').length > 0 && (
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                    activeView === 'chat' ? 'bg-white/20' : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    {userMessages.filter(m => m.type === 'user').length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 bg-gray-50" style={{ height: 'calc(100% - 140px)' }}>
+          {/* Mobile FAQ View */}
+          {activeView === 'faq' && (
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg">
+                    <HelpCircle className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-lg font-bold text-gray-800">Frequently Asked Questions</h2>
+                </div>
+                <p className="text-xs text-gray-600">Find answers to common questions</p>
+              </div>
+
+              <div className="space-y-3">
+                {faqData.map((faq) => {
+                  const Icon = faq.icon;
+                  const isExpanded = expandedFaq === faq.id;
+                  return (
+                    <div
+                      key={faq.id}
+                      className="border-2 border-gray-200 rounded-xl overflow-hidden"
+                    >
+                      <button
+                        onClick={() => setExpandedFaq(isExpanded ? null : faq.id)}
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100"
+                      >
+                        <div className="flex items-center gap-3 flex-1 text-left">
+                          <div className={`bg-gradient-to-r ${faq.color} p-2 rounded-lg`}>
+                            <Icon className="w-4 h-4 text-white" />
+                          </div>
+                          <h3 className="text-sm font-bold text-gray-800">{faq.question}</h3>
+                        </div>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-purple-600" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        )}
+                      </button>
+                      {isExpanded && (
+                        <div className="px-4 py-3 bg-white border-t border-gray-200">
+                          <p className="text-xs text-gray-700 leading-relaxed">{faq.answer}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <MessageSquare className="w-4 h-4 text-purple-600" />
+                  <h3 className="text-sm font-bold text-gray-800">Still need help?</h3>
+                </div>
+                <p className="text-xs text-gray-600 mb-2">Send us a message and we'll get back to you soon.</p>
+                <button
+                  onClick={() => setActiveView('chat')}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold w-full"
+                >
+                  Contact Support
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Chat View */}
+          {activeView === 'chat' && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Chat Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-3 flex items-center justify-between border-b border-purple-500 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="bg-white/20 rounded-full p-1.5">
+                  <Shield className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Support Chat</h2>
+                  <p className="text-xs text-purple-100">Get help from our support team</p>
+                </div>
+              </div>
+              <div className="bg-white/20 rounded-lg px-2 py-1">
+                <span className="text-xs font-semibold text-white">{userMessages.filter(m => m.type === 'user').length} conv</span>
+              </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
             {loadingMessages ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-600"></div>
@@ -454,6 +556,171 @@ export default function HelpSupport({ user }) {
                 <div ref={messagesEndRef} />
                 </div>
               )}
+            </div>
+
+            {/* Error/Success Messages */}
+            {error && (
+              <div className="px-4 py-2 bg-red-50 border-t border-red-200 flex-shrink-0">
+                <div className="flex items-center gap-2 text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{error}</span>
+                </div>
+              </div>
+            )}
+            
+            {success && (
+              <div className="px-4 py-2 bg-green-50 border-t border-green-200 flex-shrink-0">
+                <div className="flex items-center gap-2 text-green-700 text-sm">
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Message sent successfully!</span>
+                </div>
+              </div>
+            )}
+
+            {/* Message Input */}
+            <div className="border-t border-gray-200 bg-white p-3 flex-shrink-0">
+              <form onSubmit={handleSubmit} className="flex items-end gap-2">
+                <div className="flex-1 relative">
+                  <textarea
+                    ref={inputRef}
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSubmit(e);
+                      }
+                    }}
+                    placeholder="Type your message..."
+                    rows={1}
+                    className="w-full px-3 py-2.5 pr-10 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none bg-gray-50 focus:bg-white transition-all text-sm"
+                    disabled={loading}
+                    style={{ minHeight: '44px', maxHeight: '100px' }}
+                  />
+                  <div className="absolute right-2.5 bottom-2.5">
+                    <Paperclip className="w-4 h-4 text-gray-400" />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading || !message.trim() || message.trim().length < 3}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-2.5 rounded-xl hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center flex-shrink-0"
+                >
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+          )}
+        </div>
+
+        {/* Desktop Chat Container */}
+        {activeView === 'chat' && (
+        <div className="hidden md:block bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden" style={{ height: 'calc(100vh - 280px)', minHeight: '600px' }}>
+          {/* Chat Header */}
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 flex items-center justify-between border-b border-purple-500">
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 rounded-full p-2">
+                <Shield className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Support Chat</h2>
+                <p className="text-xs text-purple-100">Get help from our support team</p>
+              </div>
+            </div>
+            <div className="bg-white/20 rounded-lg px-3 py-1">
+              <span className="text-xs font-semibold text-white">{userMessages.filter(m => m.type === 'user').length} conversations</span>
+            </div>
+          </div>
+
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto p-4 bg-gray-50" style={{ height: 'calc(100% - 140px)' }}>
+            {loadingMessages ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-600"></div>
+              </div>
+            ) : userMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-full p-6 mb-4">
+                  <MessageSquare className="w-12 h-12 text-purple-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">No messages yet</h3>
+                <p className="text-sm text-gray-500 max-w-md">Start a conversation with our support team. We're here to help you with any questions or issues.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {userMessages.map((item, index) => {
+                  const showDateSeparator = index === 0 || 
+                    (userMessages[index - 1] && 
+                     new Date(item.timestamp).toDateString() !== new Date(userMessages[index - 1].timestamp).toDateString());
+                  
+                  return (
+                    <div key={item.id}>
+                      {showDateSeparator && (
+                        <div className="flex items-center justify-center my-4">
+                          <span className="bg-white px-3 py-1 rounded-full text-xs text-gray-500 border border-gray-200">
+                            {new Date(item.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {item.type === 'user' ? (
+                        <div className="flex items-end justify-end gap-2 mb-2">
+                          <div className="max-w-[70%] lg:max-w-[60%]">
+                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl rounded-tr-none px-4 py-2.5 shadow-md">
+                              {item.subject && (
+                                <div className="font-semibold text-sm mb-1">{item.subject}</div>
+                              )}
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap">{item.text}</p>
+                              <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/20">
+                                <span className="text-xs opacity-75">{formatTime(item.timestamp)}</span>
+                                {item.canDelete && (
+                                  <button
+                                    onClick={() => handleDeleteMessage(item.messageId)}
+                                    disabled={deletingMessage === item.messageId}
+                                    className="ml-2 p-1 hover:bg-white/20 rounded transition-all disabled:opacity-50"
+                                    title="Delete message"
+                                  >
+                                    {deletingMessage === item.messageId ? (
+                                      <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-white"></div>
+                                    ) : (
+                                      <Trash2 className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                            <User className="w-4 h-4 text-white" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-end justify-start gap-2 mb-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-indigo-400 flex items-center justify-center flex-shrink-0">
+                            <Shield className="w-4 h-4 text-white" />
+                          </div>
+                          <div className="max-w-[70%] lg:max-w-[60%]">
+                            <div className="bg-white rounded-2xl rounded-tl-none px-4 py-2.5 shadow-md border border-gray-200">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold text-blue-600">{item.author}</span>
+                                <span className="text-xs text-gray-400">{formatTime(item.timestamp)}</span>
+                              </div>
+                              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{item.text}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
           </div>
 
           {/* Error/Success Messages */}
@@ -462,8 +729,8 @@ export default function HelpSupport({ user }) {
               <div className="flex items-center gap-2 text-red-700 text-sm">
                 <AlertCircle className="w-4 h-4" />
                 <span>{error}</span>
-                </div>
               </div>
+            </div>
           )}
           
           {success && (
@@ -471,7 +738,7 @@ export default function HelpSupport({ user }) {
               <div className="flex items-center gap-2 text-green-700 text-sm">
                 <CheckCircle className="w-4 h-4" />
                 <span>Message sent successfully!</span>
-                  </div>
+              </div>
             </div>
           )}
 
@@ -497,8 +764,8 @@ export default function HelpSupport({ user }) {
                 />
                 <div className="absolute right-3 bottom-3">
                   <Paperclip className="w-4 h-4 text-gray-400" />
-                  </div>
-            </div>
+                </div>
+              </div>
               <button
                 type="submit"
                 disabled={loading || !message.trim() || message.trim().length < 3}
@@ -517,9 +784,9 @@ export default function HelpSupport({ user }) {
               ) : (
                 <span>Minimum 3 characters required</span>
               )}
-              </p>
-                </div>
-              </div>
+            </p>
+          </div>
+        </div>
         )}
       </div>
     </div>

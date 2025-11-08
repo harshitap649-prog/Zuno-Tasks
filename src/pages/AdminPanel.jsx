@@ -15,7 +15,8 @@ import {
   getAdminSettings,
   updateAdminSettings,
   getAllClientCaptchas,
-  getQuizCompletionStats
+  getQuizCompletionStats,
+  resetUserWatchCount
 } from '../firebase/firestore';
 import { Users, DollarSign, Gift, Settings, Ban, CheckCircle, XCircle, Plus, HelpCircle, MessageSquare, ShieldCheck, Image, Loader2, PlayCircle, FileText, TrendingUp, Activity, Sparkles, Trash2, Power, Send, Shield, AlertCircle, User } from 'lucide-react';
 import ClientCaptchasTab from '../components/ClientCaptchasTab';
@@ -101,6 +102,20 @@ export default function AdminPanel() {
           alert('Points adjusted successfully.');
         }
       }
+    }
+  };
+
+  const handleResetWatchCount = async (uid, userNameOrEmail) => {
+    if (!confirm(`Reset today's ad watch limit for ${userNameOrEmail}?`)) {
+      return;
+    }
+
+    const result = await resetUserWatchCount(uid);
+    if (result.success) {
+      await loadData();
+      alert('Ad watch limit reset for today.');
+    } else {
+      alert('Failed to reset watch limit: ' + (result.error || 'Unknown error'));
     }
   };
 
@@ -358,6 +373,7 @@ export default function AdminPanel() {
           onAdjustPoints={handleAdjustPoints}
           onDisable={handleDisableUser}
           onDelete={handleDeleteUser}
+          onResetWatch={handleResetWatchCount}
         />
       )}
 
@@ -399,7 +415,7 @@ export default function AdminPanel() {
   );
 }
 
-function UsersTab({ users, onBan, onAdjustPoints, onDisable, onDelete }) {
+function UsersTab({ users, onBan, onAdjustPoints, onDisable, onDelete, onResetWatch }) {
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 md:p-10">
       <div className="flex items-center justify-between mb-6">
@@ -420,6 +436,7 @@ function UsersTab({ users, onBan, onAdjustPoints, onDisable, onDelete }) {
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Email</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Points</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Watch Today</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Earned</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
@@ -436,6 +453,12 @@ function UsersTab({ users, onBan, onAdjustPoints, onDisable, onDelete }) {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                   {user.points?.toLocaleString() || 0}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-gray-800">{user.watchCount ?? 0} / 3</span>
+                    <span className="text-xs text-gray-500">Last reset: {user.lastWatchResetKey || 'N/A'}</span>
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                   ₹{((user.totalEarned || 0) / 10).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -473,6 +496,14 @@ function UsersTab({ users, onBan, onAdjustPoints, onDisable, onDelete }) {
                     >
                       Adjust Points
                     </button>
+                    {onResetWatch && (
+                      <button
+                        onClick={() => onResetWatch(user.id, user.name || user.email)}
+                        className="text-purple-600 hover:text-purple-800 font-semibold transition-colors duration-200 px-3 py-2 rounded-lg hover:bg-purple-50"
+                      >
+                        Reset Watch
+                      </button>
+                    )}
                     <button
                       onClick={() => onDelete(user.id, user.name || user.email)}
                       className="text-red-600 hover:text-red-700 transition-colors duration-200 p-2 rounded-lg hover:bg-red-50"
@@ -1192,6 +1223,7 @@ function OffersTab({ offers, onReload }) {
     active: true,
                 category: 'surveys',
     isAffiliate: false,
+    imageUrl: '',
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -1325,7 +1357,7 @@ function OffersTab({ offers, onReload }) {
     if (result.success) {
       alert('Offer added successfully!');
       setShowAddForm(false);
-      setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'general', isAffiliate: false });
+      setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'surveys', isAffiliate: false, imageUrl: '' });
       onReload();
     } else {
       alert('Failed to add offer: ' + result.error);
@@ -2735,7 +2767,7 @@ function OffersTab({ offers, onReload }) {
             <a href="https://www.hideout.tv/publishers" target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:underline">
               Hideout.tv Dashboard
             </a>
-            . Hideout.tv offers video watching with instant approval. Once configured, users will see videos in the Videos category.
+            . Hideout.tv offers video watching and music listening with instant approval. Once configured, users will see videos in the Videos category and music in the <strong>"Listen to Music"</strong> category.
           </p>
           <div className="space-y-4">
             <div>
@@ -2778,7 +2810,7 @@ function OffersTab({ offers, onReload }) {
                     if (hideoutTvApiKey) localStorage.setItem('hideout_tv_api_key', hideoutTvApiKey);
                     if (hideoutTvOfferwallUrl) localStorage.setItem('hideout_tv_offerwall_url', hideoutTvOfferwallUrl);
                     if (result.success) {
-                      alert('✅ Hideout.tv is ready! Users can now watch videos and earn points in the Videos category.');
+                      alert('✅ Hideout.tv is ready! Users can now watch videos in the Videos category and listen to music in the "Listen to Music" category!');
                       setShowHideoutTvConfig(false);
                       onReload();
                     } else {
@@ -3090,6 +3122,7 @@ function OffersTab({ offers, onReload }) {
                   active: true,
                   category: 'finance',
                   isAffiliate: true,
+                  imageUrl: '',
                 });
                 setShowAddForm(true);
               }}
@@ -3107,12 +3140,31 @@ function OffersTab({ offers, onReload }) {
                   active: true,
                   category: 'finance',
                   isAffiliate: true,
+                  imageUrl: '',
                 });
                 setShowAddForm(true);
               }}
               className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 text-sm"
             >
               💳 PhonePe Referral
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Shop on Amazon - Earn Points',
+                  description: 'Shop on Amazon using our link and earn points. Browse products, add to cart, or make a purchase to earn rewards!',
+                  rewardPoints: '100',
+                  link: 'https://www.amazon.in/?tag=zunotasks21-21',
+                  active: true,
+                  category: 'shopping',
+                  isAffiliate: true,
+                  imageUrl: '',
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 text-sm"
+            >
+              🛒 Amazon Shopping
             </button>
             <button
               onClick={() => {
@@ -3124,6 +3176,7 @@ function OffersTab({ offers, onReload }) {
                   active: true,
                   category: 'games',
                   isAffiliate: false,
+                  imageUrl: '',
                 });
                 setShowAddForm(true);
               }}
@@ -3141,6 +3194,7 @@ function OffersTab({ offers, onReload }) {
                   active: true,
                   category: 'shopping',
                   isAffiliate: false,
+                  imageUrl: '',
                 });
                 setShowAddForm(true);
               }}
@@ -3158,6 +3212,7 @@ function OffersTab({ offers, onReload }) {
                   active: true,
                   category: 'entertainment',
                   isAffiliate: false,
+                  imageUrl: '',
                 });
                 setShowAddForm(true);
               }}
@@ -3175,12 +3230,31 @@ function OffersTab({ offers, onReload }) {
                   active: true,
                   category: 'social',
                   isAffiliate: false,
+                  imageUrl: '',
                 });
                 setShowAddForm(true);
               }}
               className="bg-pink-600 text-white py-2 px-4 rounded-lg hover:bg-pink-700 text-sm"
             >
               📱 Social Media
+            </button>
+            <button
+              onClick={() => {
+                setFormData({
+                  title: 'Shop on Amazon - Product Name',
+                  description: 'Purchase this product on Amazon and earn points! Shop now and get rewarded.',
+                  rewardPoints: '200',
+                  link: 'https://amzn.to/YOUR_LINK',
+                  active: true,
+                  category: 'shopping',
+                  isAffiliate: true,
+                  imageUrl: '',
+                });
+                setShowAddForm(true);
+              }}
+              className="bg-orange-600 text-white py-2 px-4 rounded-lg hover:bg-orange-700 text-sm"
+            >
+              🛒 Amazon Product
             </button>
           </div>
         </div>
@@ -3220,6 +3294,22 @@ function OffersTab({ offers, onReload }) {
               placeholder="Describe what users need to do to complete this task..."
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Product Image URL (Optional - Recommended for Shopping)
+            </label>
+            <input
+              type="url"
+              value={formData.imageUrl || ''}
+              onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+              placeholder="https://example.com/product-image.jpg"
+            />
+            <p className="text-xs text-gray-600 mt-1">
+              💡 Add product image URL for better appearance. For Amazon products, right-click product image → Copy image address
+            </p>
           </div>
           
           <div className="grid grid-cols-2 gap-4">
@@ -3283,6 +3373,7 @@ function OffersTab({ offers, onReload }) {
                 <option value="quizzes">Quizzes</option>
                 <option value="videos">Videos</option>
                 <option value="apps">Apps</option>
+                <option value="shopping">Shopping</option>
                 <option value="general">General</option>
               </select>
             </div>
@@ -3312,7 +3403,7 @@ function OffersTab({ offers, onReload }) {
               type="button"
               onClick={() => {
                 setShowAddForm(false);
-                setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'surveys', isAffiliate: false });
+                setFormData({ title: '', description: '', rewardPoints: '', link: '', active: true, category: 'surveys', isAffiliate: false, imageUrl: '' });
               }}
               className="bg-gray-200 text-gray-800 py-2 px-4 rounded-lg hover:bg-gray-300"
             >

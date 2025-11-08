@@ -84,12 +84,12 @@ export default function Wallet({ user }) {
         {/* Hero Section */}
         <div className="text-center mb-4">
           <div className="relative inline-flex items-center justify-center mb-2">
-            <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
-            <div className="relative bg-gradient-to-r from-amber-600 to-orange-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full blur-xl opacity-30 animate-pulse"></div>
+            <div className="relative bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
               <WalletIcon className="w-5 h-5 text-white" />
             </div>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent mb-2">
+          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
             My Wallet
           </h1>
           <p className="text-sm text-gray-600 max-w-2xl mx-auto leading-relaxed">
@@ -99,7 +99,7 @@ export default function Wallet({ user }) {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 rounded-xl shadow-lg p-4 text-white transform hover:scale-[1.02] transition-transform duration-300">
+          <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl shadow-lg p-4 text-white transform hover:scale-[1.02] transition-transform duration-300">
             <div className="flex items-center justify-between mb-3">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
                 <Coins className="w-5 h-5" />
@@ -108,9 +108,9 @@ export default function Wallet({ user }) {
                 <span className="text-xs font-semibold">Balance</span>
               </div>
             </div>
-            <p className="text-green-100 text-xs font-medium mb-1">Current Balance</p>
+            <p className="text-purple-100 text-xs font-medium mb-1">Current Balance</p>
             <p className="text-3xl font-bold mb-1">₹{currentBalance}</p>
-            <p className="text-green-100 text-xs">{points.toLocaleString()} points</p>
+            <p className="text-purple-100 text-xs">{points.toLocaleString()} points</p>
             <div className="mt-3 pt-3 border-t border-white/20">
               <div className="flex items-center text-xs">
                 <Sparkles className="w-3 h-3 mr-1.5" />
@@ -139,7 +139,7 @@ export default function Wallet({ user }) {
           </div>
         </div>
 
-          <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl shadow-lg p-4 text-white transform hover:scale-[1.02] transition-transform duration-300">
+          <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 rounded-xl shadow-lg p-4 text-white transform hover:scale-[1.02] transition-transform duration-300">
             <div className="flex items-center justify-between mb-3">
               <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
                 <Download className="w-5 h-5" />
@@ -148,9 +148,9 @@ export default function Wallet({ user }) {
                 <span className="text-xs font-semibold">Withdrawn</span>
               </div>
             </div>
-            <p className="text-purple-100 text-xs font-medium mb-1">Total Withdrawn</p>
+            <p className="text-orange-100 text-xs font-medium mb-1">Total Withdrawn</p>
             <p className="text-3xl font-bold mb-1">₹{totalWithdrawnRupees}</p>
-            <p className="text-purple-100 text-xs">{totalWithdrawn.toLocaleString()} points</p>
+            <p className="text-orange-100 text-xs">{totalWithdrawn.toLocaleString()} points</p>
             <div className="mt-3 pt-3 border-t border-white/20">
               <div className="flex items-center text-xs">
                 <ArrowDown className="w-3 h-3 mr-1.5" />
@@ -170,10 +170,10 @@ export default function Wallet({ user }) {
               <h3 className="text-base font-bold text-gray-800">Conversion Rate</h3>
             </div>
             <div className="space-y-2">
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
+              <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg p-3 border border-orange-100">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-700">100 points</span>
-                  <span className="text-lg font-bold text-green-600">= ₹10</span>
+                  <span className="text-lg font-bold text-orange-600">= ₹10</span>
                 </div>
               </div>
               <div className="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg p-3 border border-blue-100">
@@ -195,13 +195,13 @@ export default function Wallet({ user }) {
             </div>
             <div className={`rounded-lg p-3 ${
               points >= 1000 
-                ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200' 
+                ? 'bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200' 
                 : 'bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-200'
             }`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-gray-700">Current Status</span>
                 {points >= 1000 ? (
-                  <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
+                  <span className="bg-orange-500 text-white px-2 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
                     Eligible
                   </span>
                 ) : (
@@ -212,8 +212,8 @@ export default function Wallet({ user }) {
               </div>
               {points >= 1000 ? (
                 <div className="space-y-1">
-                  <p className="text-sm font-bold text-green-700">✅ You're eligible to withdraw!</p>
-                  <p className="text-xs text-green-600">You have enough points to make a withdrawal request.</p>
+                  <p className="text-sm font-bold text-orange-700">✅ You're eligible to withdraw!</p>
+                  <p className="text-xs text-orange-600">You have enough points to make a withdrawal request.</p>
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -308,8 +308,8 @@ export default function Wallet({ user }) {
                     </div>
                     <div className="text-right ml-3">
                       <div className="flex items-center justify-end mb-0.5">
-                        <ArrowUp className="w-4 h-4 text-green-500 mr-1.5" />
-                        <p className="text-lg font-bold text-green-600">+{transaction.points}</p>
+                        <ArrowUp className="w-4 h-4 text-orange-500 mr-1.5" />
+                        <p className="text-lg font-bold text-orange-600">+{transaction.points}</p>
                       </div>
                       <p className="text-sm font-semibold text-gray-700">{formatPoints(transaction.points)}</p>
                     </div>

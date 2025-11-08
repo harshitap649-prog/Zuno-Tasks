@@ -118,7 +118,7 @@ export default function Navbar({ user, isAdmin }) {
               </div>
               <button
                 onClick={handleLogoutClick}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-lg text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-lg text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-500 shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
@@ -207,7 +207,7 @@ export default function Navbar({ user, isAdmin }) {
                   setMobileOpen(false);
                   handleLogoutClick();
                 }}
-                className="w-full flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 shadow-md transition-all duration-200"
+                className="w-full flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-md transition-all duration-200"
               >
                 <LogOut className="w-4 h-4 mr-2" /> Logout
               </button>
